@@ -36,3 +36,14 @@
     transform: rotate(360deg);
   }
 }
+
+
+/* Smooth hover transition */
+* {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Optional: improve contrast on dark mode hover globally */
+.dark .hoverable:hover {
+  background-color: #222531 !important;
+}
