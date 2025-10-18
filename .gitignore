@@ -21,3 +21,32 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+
+# --- Environment & secrets ---
+.env
+.env.*
+
+# --- Python virtual environments ---
+venv/
+.env/
+.venv/
+
+# --- Python cache files ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Logs & temp files ---
+*.log
+*.tmp
+
+# --- Database dumps ---
+*.sql
+
+# --- IDE & OS files ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
