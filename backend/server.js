@@ -3,13 +3,22 @@ import express from "express";
 import mysql from "mysql2/promise";
 import cors from "cors";
 import dotenv from "dotenv";
+
+// Mongo
+import connectMongo from "./config/mongo.js";
+import rideRoutes from "./routes/rideRoutes.js";
+
 dotenv.config();
+connectMongo(); // connect MongoDB
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ---- DB Connection ----
+// Mongo routes
+app.use("/api/mongo/rides", rideRoutes);
+
+// ---- MySQL DB Connection ----
 const db = await mysql.createConnection({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -19,7 +28,7 @@ const db = await mysql.createConnection({
 });
 
 const [dbName] = await db.query("SELECT DATABASE() AS current_db;");
-console.log("📂 Connected to DB:", dbName[0].current_db);
+console.log("📂 Connected to MYSQL DB:", dbName[0].current_db);
 
 // -----------------------------------------------------------
 // 1️⃣ Test Route
