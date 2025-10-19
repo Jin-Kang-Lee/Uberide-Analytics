@@ -2,7 +2,15 @@ import React, { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import axios from "axios";
 
-const COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#9333ea"];
+const COLORS = [
+  "#2563eb", // Blue
+  "#16a34a", // Green
+  "#f59e0b", // Amber
+  "#dc2626", // Red
+  "#9333ea", // Purple
+  "#14b8a6", // Teal
+  "#EC4899", // Rose
+];
 
 export default function DonutChart({ title, endpoint }) {
   const [data, setData] = useState([]);
@@ -24,7 +32,7 @@ export default function DonutChart({ title, endpoint }) {
     <div className="bg-white dark:bg-[#181A20] shadow-sm p-4 rounded-2xl transition-colors duration-300">
 
       <h3 className="text-lg font-semibold mb-3">{title}</h3>
-      <ResponsiveContainer width="100%" height={250}>
+      <ResponsiveContainer width="100%" height={350}>
         <PieChart>
           <Pie
             data={data}

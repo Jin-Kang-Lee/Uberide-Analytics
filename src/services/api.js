@@ -51,4 +51,16 @@ export const fetchRidesTrend = async () => {
   return response.data;
 };
 
+// 🗺️ 8️⃣ City & Region Insights (Map)
+export const fetchCityInsights = async () => {
+  const response = await api.get("/city-insights");
+  return response.data;
+};
+
+
+
+
+
+
+
 export default api;

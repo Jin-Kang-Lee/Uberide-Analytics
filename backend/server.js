@@ -180,6 +180,65 @@ app.get("/api/rides-trend", async (req, res) => {
 
 
 
+// -----------------------------------------------------------
+// 8️⃣ City & Region Insights (for Map visualization)
+// -----------------------------------------------------------
+app.get("/api/city-insights", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        sub.city,
+        COUNT(sub.booking_id) AS total_rides,
+        ROUND(SUM(sub.booking_value), 2) AS total_revenue,
+        ROUND(AVG(sub.ride_distance), 2) AS avg_distance,
+        ROUND(AVG(COALESCE(sub.customer_rating, 0)), 2) AS avg_rating
+      FROM (
+        SELECT 
+          b.booking_id,
+          b.booking_value,
+          b.ride_distance,
+          r.customer_rating,
+          COALESCE(l.name, 'Unknown') AS city
+        FROM booking b
+        JOIN location l ON b.pickup_location_id = l.location_id
+        LEFT JOIN ratings r ON b.booking_id = r.booking_id
+      ) AS sub
+      GROUP BY sub.city
+      ORDER BY total_revenue DESC
+      LIMIT 10;
+    `);
+
+    // Optional — coordinates for the most common NCR locations
+    const cityCoords = {
+      "Barakhamba Road":  { lat: 28.6304, lon: 77.2240 },
+      "Khandsa":          { lat: 28.4319, lon: 77.0322 },
+      "Pataudi Chowk":    { lat: 28.3260, lon: 76.9550 },
+      "Subhash Chowk":    { lat: 28.4558, lon: 77.0337 },
+      "Badarpur":         { lat: 28.4962, lon: 77.3006 },
+      "Inderlok":         { lat: 28.6712, lon: 77.1760 },
+      "AIIMS":            { lat: 28.5665, lon: 77.2100 },
+      "Tughlakabad":      { lat: 28.4986, lon: 77.2577 },
+      "Greater Noida":    { lat: 28.4744, lon: 77.5030 },
+      "Mayur Vihar":      { lat: 28.6044, lon: 77.3117 },
+    };
+
+    const enriched = rows.map(row => ({
+      ...row,
+      latitude: cityCoords[row.city]?.lat || 22.9734,
+      longitude: cityCoords[row.city]?.lon || 78.6569
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    console.error("❌ Error fetching city insights:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+
+
+
 
 
 
