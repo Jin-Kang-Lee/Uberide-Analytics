@@ -26,6 +26,10 @@ yarn-error.log*
 # --- Environment & secrets ---
 .env
 .env.*
+*.pem
+*.key
+.ssh/
+
 
 # --- Python virtual environments ---
 venv/
