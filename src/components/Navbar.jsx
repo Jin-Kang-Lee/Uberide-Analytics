@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { FaSun, FaMoon } from "react-icons/fa";
 
 export default function Navbar() {
   const [darkMode, setDarkMode] = useState(false);
   const location = useLocation();
-  const isMongo = location.pathname.includes("mongo");
+  
+  // Check if current page is MongoDB-related
+  const isMongoRoute = [
+    '/operationaloverview',
+    '/vehicles',
+    '/locations',
+    '/timeanalysis',
+    '/customeranalysis'
+  ].some(route => location.pathname.includes(route));
 
   // Check theme on load
   useEffect(() => {
@@ -20,47 +28,45 @@ export default function Navbar() {
     setDarkMode(isDark);
   };
 
+  // Get page title based on current route
+  const getPageTitle = () => {
+    const path = location.pathname;
+    
+    // MySQL Routes
+    if (path === '/dashboard' || path === '/') return 'MySQL Dashboard';
+    if (path.includes('/city-insights')) return 'City Insights';
+    if (path.includes('/bookings')) return 'Manage Bookings';
+    if (path === '/customers') return 'Customers';
+    if (path.includes('/reports')) return 'Reports';
+    
+    // MongoDB Routes
+    if (path.includes('/operationaloverview')) return 'Operational Overview';
+    if (path.includes('/vehicles')) return 'Vehicle Analytics';
+    if (path.includes('/locations')) return 'Location Analytics';
+    if (path.includes('/timeanalysis')) return 'Time Analysis';
+    if (path.includes('/customeranalysis')) return 'Customer Analysis';
+    
+    // Default
+    return 'Uber Analytics Dashboard';
+  };
+
   return (
     <nav
       className={`flex justify-between items-center px-6 py-4 shadow-md transition-all duration-300 rounded-none
       ${
         darkMode
-          ? isMongo
-            ? "bg-[#0D1B2A] text-white" // Mongo dark mode
-            : "bg-[#2C2F38] text-white" // ✅ SQL dark mode = white text now
-          : isMongo
-            ? "bg-[#243763] text-white" // Mongo light mode
-            : "bg-white text-black"     // SQL light mode
+          ? isMongoRoute
+            ? "bg-[#0D1B2A] text-white" // Mongo dark mode - dark blue
+            : "bg-[#2C2F38] text-white" // SQL dark mode - dark gray
+          : isMongoRoute
+            ? "bg-white text-black"     // Mongo light mode - WHITE like MySQL
+            : "bg-white text-black"     // SQL light mode - white
       }`}
     >
-      {/* ---- Title ---- */}
+      {/* ---- Dynamic Page Title ---- */}
       <h1 className="font-semibold text-lg tracking-wide">
-        {isMongo ? "MongoDB Analytics Dashboard" : "Uber Analytics Dashboard"}
+        {getPageTitle()}
       </h1>
-
-      {/* ---- Links ---- */}
-      <div className="flex items-center space-x-6 font-medium">
-        <Link
-          to="/sql"
-          className={`transition ${
-            darkMode
-              ? "text-white hover:text-gray-300" // ✅ white text in dark mode
-              : "text-black hover:text-gray-700"
-          }`}
-        >
-          SQL Dashboard
-        </Link>
-        <Link
-          to="/mongo"
-          className={`transition ${
-            darkMode
-              ? "text-white hover:text-gray-300"
-              : "text-black hover:text-gray-700"
-          }`}
-        >
-          MongoDB Dashboard
-        </Link>
-      </div>
 
       {/* ---- Theme Toggle ---- */}
       <button
@@ -68,12 +74,10 @@ export default function Navbar() {
         className={`relative w-10 h-10 flex items-center justify-center rounded-full
           ${
             darkMode
-              ? isMongo
+              ? isMongoRoute
                 ? "bg-[#1B263B] hover:bg-[#2A3A5E] text-white"
                 : "bg-[#3B3E47] hover:bg-[#4A4E58] text-white"
-              : isMongo
-                ? "bg-[#3B4A80] hover:bg-[#4C5DA0] text-white"
-                : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+              : "bg-gray-200 hover:bg-gray-300 text-gray-800"
           }
           transition-all duration-300 ease-in-out overflow-hidden`}
       >

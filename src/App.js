@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import CityInsights from "./pages/CityInsights";
-import MongoDashboard from "./pages/MongoDashboard";
+import OperationalOverview from "./pages/OperationalOverview";
 import "./App.css";
 
 function App() {
@@ -10,6 +10,7 @@ function App() {
       <Route path="/" element={<Navigate to="/dashboard" />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/city-insights" element={<CityInsights />} />
+      <Route path="/operationaloverview" element={<OperationalOverview />} />
     </Routes>
   );
 }
