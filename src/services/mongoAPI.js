@@ -4,7 +4,12 @@ const BASE_URL = "http://localhost:5001/api/mongo";
 // ==================== HELPER FUNCTION ====================
 async function fetchData(endpoint) {
   try {
-    const response = await fetch(`${BASE_URL}${endpoint}`);
+    // Ensure slash prefix
+    const fullUrl = endpoint.startsWith("/")
+      ? `${BASE_URL}${endpoint}`
+      : `${BASE_URL}/${endpoint}`;
+
+    const response = await fetch(fullUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch data from ${endpoint}`);
     }
@@ -39,117 +44,121 @@ export async function fetchRidesTrend() {
 
 // ==================== VEHICLE STATS ====================
 export async function fetchVehicleBookings() {
-  return fetchData("/vehicle-stats/bookings");
+  return fetchData("/vehicle-bookings");
 }
 
 export async function fetchVehicleCompletion() {
-  return fetchData("/vehicle-stats/completion");
+  return fetchData("/vehicle-completion");
 }
 
 export async function fetchVehicleReliability() {
-  return fetchData("/vehicle-stats/reliability");
+  return fetchData("/vehicle-reliability");
+}
+
+export async function fetchVehicleRevenue() {
+  return fetchData("/vehicle-revenue");
 }
 
 export async function fetchVehicleRatings() {
-  return fetchData("/vehicle-stats/ratings");
+  return fetchData("/vehicle-ratings");
 }
 
 export async function fetchVehicleVTAT() {
-  return fetchData("/vehicle-stats/vtat");
+  return fetchData("/vehicle-vtat");
 }
 
 export async function fetchVehicleCTAT() {
-  return fetchData("/vehicle-stats/ctat");
+  return fetchData("/vehicle-ctat");
 }
 
 // ==================== LOCATION STATS ====================
 export async function fetchTopPickupLocations() {
-  return fetchData("/location-stats/top-pickups");
+  return fetchData("/location-top-pickups");
 }
 
 export async function fetchTopDropLocations() {
-  return fetchData("/location-stats/top-drops");
+  return fetchData("/location-top-drops");
 }
 
 export async function fetchNoDriverByLocation() {
-  return fetchData("/location-stats/no-driver");
+  return fetchData("/location-no-driver");
 }
 
 export async function fetchCompletionRateByLocation() {
-  return fetchData("/location-stats/completion");
+  return fetchData("/location-completion");
 }
 
 export async function fetchVTATByLocation() {
-  return fetchData("/location-stats/vtat");
+  return fetchData("/location-vtat");
 }
 
 export async function fetchRatingsByLocation() {
-  return fetchData("/location-stats/ratings");
+  return fetchData("/location-ratings");
 }
 
 // ==================== TIME BUCKETS ====================
 export async function fetchHourlyBookings() {
-  return fetchData("/time-buckets/hourly");
+  return fetchData("/time-hourly-bookings");
 }
 
 export async function fetchWeekdayBookings() {
-  return fetchData("/time-buckets/weekday");
+  return fetchData("/time-weekday-bookings");
 }
 
 export async function fetchWeekdayCompletion() {
-  return fetchData("/time-buckets/weekday-completion");
+  return fetchData("/time-weekday-completion");
 }
 
 export async function fetchHourlyBookingValue() {
-  return fetchData("/time-buckets/hourly-value");
+  return fetchData("/time-hourly-value");
 }
 
 export async function fetchHourlyDistance() {
-  return fetchData("/time-buckets/hourly-distance");
+  return fetchData("/time-hourly-distance");
 }
 
 export async function fetchSpeedMetrics() {
-  return fetchData("/time-buckets/speed");
+  return fetchData("/time-speed");
 }
 
 export async function fetchHourlyRatings() {
-  return fetchData("/time-buckets/ratings");
+  return fetchData("/time-hourly-ratings");
 }
 
 // ==================== CUSTOMER PROFILES ====================
 export async function fetchTopCustomersByBookings() {
-  return fetchData("/customer-profiles/top-bookings");
+  return fetchData("/customer-top-bookings");
 }
 
 export async function fetchTopCustomersByRevenue() {
-  return fetchData("/customer-profiles/top-revenue");
+  return fetchData("/customer-top-revenue");
 }
 
 export async function fetchVehiclePreferences() {
-  return fetchData("/customer-profiles/vehicle-preference");
+  return fetchData("/customer-vehicle-preference");
 }
 
 export async function fetchPaymentMethodDistribution() {
-  return fetchData("/customer-profiles/payment-method");
+  return fetchData("/customer-payment-method");
 }
 
 export async function fetchCustomerSuccessRate() {
-  return fetchData("/customer-profiles/success-rate");
+  return fetchData("/customer-success-rate");
 }
 
 export async function fetchCustomerRatingsDistribution() {
-  return fetchData("/customer-profiles/ratings-dist");
+  return fetchData("/customer-ratings-dist");
 }
 
 export async function fetchPopularPickupsByCustomers() {
-  return fetchData("/customer-profiles/popular-pickups");
+  return fetchData("/customer-popular-pickups");
 }
 
 export async function fetchPopularDropsByCustomers() {
-  return fetchData("/customer-profiles/popular-drops");
+  return fetchData("/customer-popular-drops");
 }
 
-// ==================== BATCH FETCHING (Optional) ====================
+// ==================== BATCH FETCHING ====================
 export async function fetchDashboardData() {
   try {
     const [summary, bookingStatus, weeklyTrends, ridesTrend] = await Promise.all([
@@ -159,12 +168,7 @@ export async function fetchDashboardData() {
       fetchRidesTrend(),
     ]);
 
-    return {
-      summary,
-      bookingStatus,
-      weeklyTrends,
-      ridesTrend,
-    };
+    return { summary, bookingStatus, weeklyTrends, ridesTrend };
   } catch (err) {
     console.error("❌ Error fetching dashboard data:", err);
     throw err;
@@ -173,25 +177,27 @@ export async function fetchDashboardData() {
 
 export async function fetchVehicleDashboardData() {
   try {
-    const [summary, bookings, completion, reliability, ratings, vtat, ctat] = await Promise.all([
+    const [
+      summary,
+      bookings,
+      completion,
+      reliability,
+      revenue,
+      ratings,
+      vtat,
+      ctat,
+    ] = await Promise.all([
       fetchMongoSummary(),
       fetchVehicleBookings(),
       fetchVehicleCompletion(),
       fetchVehicleReliability(),
+      fetchVehicleRevenue(),
       fetchVehicleRatings(),
       fetchVehicleVTAT(),
       fetchVehicleCTAT(),
     ]);
 
-    return {
-      summary,
-      bookings,
-      completion,
-      reliability,
-      ratings,
-      vtat,
-      ctat,
-    };
+    return { summary, bookings, completion, reliability, revenue, ratings, vtat, ctat };
   } catch (err) {
     console.error("❌ Error fetching vehicle dashboard data:", err);
     throw err;
@@ -210,15 +216,7 @@ export async function fetchLocationDashboardData() {
       fetchRatingsByLocation(),
     ]);
 
-    return {
-      summary,
-      topPickups,
-      topDrops,
-      noDriver,
-      completion,
-      vtat,
-      ratings,
-    };
+    return { summary, topPickups, topDrops, noDriver, completion, vtat, ratings };
   } catch (err) {
     console.error("❌ Error fetching location dashboard data:", err);
     throw err;
@@ -305,24 +303,25 @@ export async function fetchCustomerDashboardData() {
 }
 
 // ==================== EXPORT ALL ====================
-export default {
+const mongoAPI = {
   // General
   fetchMongoSummary,
   fetchMongoRides,
-  
+
   // Bookings
   fetchBookingStatus,
   fetchWeeklyTrends,
   fetchRidesTrend,
-  
+
   // Vehicles
   fetchVehicleBookings,
   fetchVehicleCompletion,
   fetchVehicleReliability,
+  fetchVehicleRevenue,
   fetchVehicleRatings,
   fetchVehicleVTAT,
   fetchVehicleCTAT,
-  
+
   // Locations
   fetchTopPickupLocations,
   fetchTopDropLocations,
@@ -330,7 +329,7 @@ export default {
   fetchCompletionRateByLocation,
   fetchVTATByLocation,
   fetchRatingsByLocation,
-  
+
   // Time Analysis
   fetchHourlyBookings,
   fetchWeekdayBookings,
@@ -339,7 +338,7 @@ export default {
   fetchHourlyDistance,
   fetchSpeedMetrics,
   fetchHourlyRatings,
-  
+
   // Customers
   fetchTopCustomersByBookings,
   fetchTopCustomersByRevenue,
@@ -349,7 +348,7 @@ export default {
   fetchCustomerRatingsDistribution,
   fetchPopularPickupsByCustomers,
   fetchPopularDropsByCustomers,
-  
+
   // Batch Fetching
   fetchDashboardData,
   fetchVehicleDashboardData,
@@ -357,3 +356,5 @@ export default {
   fetchTimeDashboardData,
   fetchCustomerDashboardData,
 };
+
+export default mongoAPI;

@@ -61,27 +61,28 @@ export default function MongoVehicles() {
                   <StatsCard
                     title="Total Vehicle Types"
                     value={data?.summary?.totalVehicleTypes ?? "N/A"}
-                    icon={<FaCarSide />}
+                    icon={<FaCarSide className="text-4xl text-gray-700 dark:text-yellow-400" />}
                   />
                   <StatsCard
                     title="Avg Completion Rate"
                     value={`${data?.summary?.completionRate ?? 0}%`}
-                    icon={<FaCheckCircle />}
+                    icon={<FaCheckCircle className="text-4xl text-green-600 dark:text-yellow-400" />}
                   />
                   <StatsCard
                     title="Avg Rating"
-                    value={`⭐ ${data?.summary?.avgRating ?? 0}`}
-                    icon={<FaStar />}
+                    value={`${data?.summary?.avgRating ?? 0}`}
+                    icon={<FaStar className="text-4xl text-yellow-500 dark:text-yellow-300" />}
                   />
                   <StatsCard
                     title="Top Cancellation Reason"
                     value={data?.summary?.topCancelReason ?? "—"}
-                    icon={<FaChartLine />}
+                    icon={<FaChartLine className="text-4xl text-purple-600 dark:text-yellow-400" />}
                   />
                 </>
               )}
             </div>
           </section>
+
 
           {/* ===================== RELIABILITY & PERFORMANCE ===================== */}
           <section>

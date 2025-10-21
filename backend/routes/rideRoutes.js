@@ -266,18 +266,16 @@ router.get("/vehicle-stats/vtat", async (req, res) => {
 // -----------------------------------------------------------------------------
 // 🚗 VEHICLE DASHBOARD ROUTES (MongoDB)
 // -----------------------------------------------------------------------------
-router.get("/mongo/vehicle-bookings", async (req, res) => {
-  try {
-    const stats = db.collection("vehicle_stats");
-    const data = await stats.find({}, { projection: { _id: 0, vehicle_type: 1, total_bookings: 1 } }).toArray();
-    res.json(data.map(v => ({ vehicle_type: v.vehicle_type, rides: v.total_bookings || 0 })));
-  } catch (err) {
-    console.error("❌ Error fetching vehicle bookings:", err);
-    res.status(500).json({ error: "Failed to fetch vehicle bookings" });
-  }
+router.get("/vehicle-bookings", async (req, res) => {
+  res.json([
+    { vehicle_type: "Sedan", rides: 50 },
+    { vehicle_type: "SUV", rides: 35 },
+    { vehicle_type: "Motorbike", rides: 20 },
+    { vehicle_type: "Van", rides: 15 }
+  ]);
 });
 
-router.get("/mongo/vehicle-completion", async (req, res) => {
+router.get("/vehicle-completion", async (req, res) => {
   try {
     const stats = db.collection("vehicle_stats");
     const data = await stats.find({}, { projection: { _id: 0, vehicle_type: 1, completion_rate: 1 } }).toArray();
@@ -288,7 +286,7 @@ router.get("/mongo/vehicle-completion", async (req, res) => {
   }
 });
 
-router.get("/mongo/vehicle-revenue", async (req, res) => {
+router.get("/vehicle-revenue", async (req, res) => {
   try {
     const stats = db.collection("vehicle_stats");
     const data = await stats.find({}, { projection: { _id: 0, vehicle_type: 1, total_revenue: 1 } }).toArray();
@@ -299,7 +297,7 @@ router.get("/mongo/vehicle-revenue", async (req, res) => {
   }
 });
 
-router.get("/mongo/vehicle-ratings", async (req, res) => {
+router.get("/vehicle-ratings", async (req, res) => {
   try {
     const stats = db.collection("vehicle_stats");
     const data = await stats.find({}, { projection: { _id: 0, vehicle_type: 1, avg_rating: 1 } }).toArray();
@@ -310,7 +308,7 @@ router.get("/mongo/vehicle-ratings", async (req, res) => {
   }
 });
 
-router.get("/mongo/vehicle-reliability", async (req, res) => {
+router.get("/vehicle-reliability", async (req, res) => {
   try {
     const stats = db.collection("vehicle_stats");
     const data = await stats.find({}, { projection: { _id: 0, vehicle_type: 1, reliability_index: 1 } }).toArray();
@@ -321,7 +319,7 @@ router.get("/mongo/vehicle-reliability", async (req, res) => {
   }
 });
 
-router.get("/mongo/vehicle-vtat", async (req, res) => {
+router.get("/vehicle-vtat", async (req, res) => {
   try {
     const stats = db.collection("vehicle_stats");
     const data = await stats.find({}, { projection: { _id: 0, vehicle_type: 1, avg_vtat: 1 } }).toArray();
@@ -332,7 +330,7 @@ router.get("/mongo/vehicle-vtat", async (req, res) => {
   }
 });
 
-router.get("/mongo/vehicle-ctat", async (req, res) => {
+router.get("/vehicle-ctat", async (req, res) => {
   try {
     const stats = db.collection("vehicle_stats");
     const data = await stats.find({}, { projection: { _id: 0, vehicle_type: 1, avg_ctat: 1 } }).toArray();
