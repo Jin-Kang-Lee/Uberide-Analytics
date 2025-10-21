@@ -185,18 +185,29 @@ app.get("/api/rides-trend", async (req, res) => {
 // -----------------------------------------------------------
 app.get("/api/city-insights", async (req, res) => {
   try {
+    // 🧮 Core city metrics
     const [rows] = await db.query(`
       SELECT 
         sub.city,
         COUNT(sub.booking_id) AS total_rides,
         ROUND(SUM(sub.booking_value), 2) AS total_revenue,
         ROUND(AVG(sub.ride_distance), 2) AS avg_distance,
-        ROUND(AVG(COALESCE(sub.customer_rating, 0)), 2) AS avg_rating
+        ROUND(AVG(COALESCE(sub.customer_rating, 0)), 2) AS avg_rating,
+
+        -- ✅ Completion Rate & Revenue per km
+        ROUND(
+          (SUM(CASE WHEN sub.status = 'Completed' THEN 1 ELSE 0 END) / COUNT(sub.booking_id)) * 100,
+          2
+        ) AS completion_rate,
+        ROUND(SUM(sub.booking_value) / NULLIF(SUM(sub.ride_distance), 0), 2) AS revenue_per_km
+
       FROM (
         SELECT 
           b.booking_id,
+          b.status,                
           b.booking_value,
           b.ride_distance,
+          b.payment_method,
           r.customer_rating,
           COALESCE(l.name, 'Unknown') AS city
         FROM booking b
@@ -208,7 +219,25 @@ app.get("/api/city-insights", async (req, res) => {
       LIMIT 10;
     `);
 
-    // Optional — coordinates for the most common NCR locations
+    // 🧮 Separate query for payment preferences per city
+    const [payments] = await db.query(`
+      SELECT 
+        COALESCE(l.name, 'Unknown') AS city,
+        b.payment_method,
+        COUNT(*) AS method_count
+      FROM booking b
+      JOIN location l ON b.pickup_location_id = l.location_id
+      GROUP BY l.name, b.payment_method;
+    `);
+
+    // 🧠 Reformat payment data
+    const paymentMap = {};
+    payments.forEach(row => {
+      if (!paymentMap[row.city]) paymentMap[row.city] = {};
+      paymentMap[row.city][row.payment_method] = row.method_count;
+    });
+
+    // 🗺️ Coordinates for your cities
     const cityCoords = {
       "Barakhamba Road":  { lat: 28.6304, lon: 77.2240 },
       "Khandsa":          { lat: 28.4319, lon: 77.0322 },
@@ -222,11 +251,26 @@ app.get("/api/city-insights", async (req, res) => {
       "Mayur Vihar":      { lat: 28.6044, lon: 77.3117 },
     };
 
-    const enriched = rows.map(row => ({
-      ...row,
-      latitude: cityCoords[row.city]?.lat || 22.9734,
-      longitude: cityCoords[row.city]?.lon || 78.6569
-    }));
+    // 🧩 Merge everything together
+    const enriched = rows.map(row => {
+      // calculate payment preference %
+      const payData = paymentMap[row.city] || {};
+      const total = Object.values(payData).reduce((a, b) => a + b, 0);
+      let payment_preference = "N/A";
+
+      if (total > 0) {
+        payment_preference = Object.entries(payData)
+          .map(([method, count]) => `${method}: ${((count / total) * 100).toFixed(1)}%`)
+          .join(", ");
+      }
+
+      return {
+        ...row,
+        latitude: cityCoords[row.city]?.lat || 22.9734,
+        longitude: cityCoords[row.city]?.lon || 78.6569,
+        payment_preference,
+      };
+    });
 
     res.json(enriched);
   } catch (err) {
@@ -234,11 +278,6 @@ app.get("/api/city-insights", async (req, res) => {
     res.status(500).json({ error: "Database error" });
   }
 });
-
-
-
-
-
 
 
 
