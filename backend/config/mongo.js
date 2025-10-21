@@ -11,10 +11,14 @@ const connectMongo = async () => {
     console.log(`   🔗 Host: ${conn.connection.host}`);
     console.log(`   📂 Database: ${conn.connection.name}`);
 
+    // ✅ Return the connection object so server.js can use it
+    return conn;
+
   } catch (error) {
     console.error("❌ MongoDB Connection Error:", error.message);
     console.error("   ⚠️  Make sure your IP is whitelisted and credentials are correct.");
-    process.exit(1);
+    // ❌ Do NOT exit the whole process — let backend continue without Mongo if needed
+    throw error; // pass the error up instead of exiting
   }
 };
 

@@ -15,11 +15,16 @@ import axios from "axios";
 export default function CustomBarChart({ title, endpoint }) {
   const [data, setData] = useState([]);
   const [isDark, setIsDark] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(null); // Track hovered bar
+  const [activeIndex, setActiveIndex] = useState(null);
 
   useEffect(() => {
+    // ✅ Auto-switch between MySQL (5000) and MongoDB (5001)
+    const baseURL = endpoint.startsWith("mongo/")
+      ? "http://localhost:5001/api/"
+      : "http://localhost:5000/api/";
+
     axios
-      .get(`http://localhost:5000/api/${endpoint}`)
+      .get(`${baseURL}${endpoint}`)
       .then((res) => setData(res.data))
       .catch((err) => console.error("❌ Error fetching bar chart data:", err));
 
@@ -33,9 +38,8 @@ export default function CustomBarChart({ title, endpoint }) {
     return () => observer.disconnect();
   }, [endpoint]);
 
-  // --- THEME COLORS ---
   const barColor = isDark ? "#F0B90B" : "#2563eb";
-  const hoverColor = isDark ? "#FFD84C" : "#60A5FA"; // lighter yellow/blue on hover
+  const hoverColor = isDark ? "#FFD84C" : "#60A5FA";
   const gridColor = isDark ? "#2A2D33" : "#E5E7EB";
   const axisColor = isDark ? "#EAECEF" : "#374151";
   const tooltipBg = isDark ? "#181A20" : "#ffffff";
@@ -84,49 +88,37 @@ export default function CustomBarChart({ title, endpoint }) {
                 color: isDark ? "#F0B90B" : "#2563eb",
                 fontWeight: 600,
               }}
-              itemStyle={{
-                color: tooltipText,
-              }}
+              itemStyle={{ color: tooltipText }}
               cursor={{
                 fill: isDark ? "rgba(240,185,11,0.05)" : "rgba(37,99,235,0.08)",
               }}
             />
             <Legend
-            content={() => (
+              content={() => (
                 <div
-                style={{
+                  style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     marginTop: "8px",
-                }}
+                  }}
                 >
-                <div
+                  <div
                     style={{
-                    width: 14,
-                    height: 14,
-                    backgroundColor: barColor,
-                    borderRadius: 3,
-                    marginRight: 6,
+                      width: 14,
+                      height: 14,
+                      backgroundColor: barColor,
+                      borderRadius: 3,
+                      marginRight: 6,
                     }}
-                ></div>
-                <span
-                    style={{
-                    color: axisColor,
-                    fontSize: "0.9rem",
-                    }}
-                >
+                  ></div>
+                  <span style={{ color: axisColor, fontSize: "0.9rem" }}>
                     rides
-                </span>
+                  </span>
                 </div>
-            )}
+              )}
             />
-
-            <Bar
-              dataKey="rides"
-              barSize={25}
-              radius={[6, 6, 0, 0]}
-            >
+            <Bar dataKey="rides" barSize={25} radius={[6, 6, 0, 0]}>
               {data.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
