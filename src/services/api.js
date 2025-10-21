@@ -57,10 +57,38 @@ export const fetchCityInsights = async () => {
   return response.data;
 };
 
+// 👥 9️⃣ CUSTOMER INSIGHTS SECTION ----------------------------
 
+// 9.1️⃣ Customer Summary (KPI Cards)
+export const fetchCustomerSummary = async () => {
+  const response = await api.get("/customer-summary");
+  return response.data;
+};
 
+// 9.2️⃣ Top Customers by Spend
+export const fetchTopCustomers = async () => {
+  const response = await api.get("/top-customers");
+  return response.data;
+};
 
+// 9.3️⃣ Ride Frequency Distribution
+export const fetchCustomerFrequency = async () => {
+  const response = await api.get("/customer-frequency");
+  return response.data;
+};
 
+// 9.4️⃣ Monthly Customer Growth
+export const fetchCustomerGrowth = async () => {
+  const response = await api.get("/customer-growth");
+  return response.data;
+};
 
+// 9.5️⃣ Ratings vs Spending Scatter Plot
+export const fetchCustomerRatingsSpending = async () => {
+  const response = await api.get("/customer-ratings-spending");
+  return response.data;
+};
+
+// ------------------------------------------------------------
 
 export default api;

@@ -235,14 +235,142 @@ app.get("/api/city-insights", async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------
+// 9️⃣ CUSTOMER INSIGHTS SECTION
+// -----------------------------------------------------------
+
+// 9.1️⃣ Customer Summary
+app.get("/api/customer-summary", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        COUNT(DISTINCT c.customer_id) AS total_customers,
+        ROUND(AVG(r.customer_rating), 2) AS avg_customer_rating,
+        ROUND(AVG(total_spent), 2) AS avg_spending_per_customer,
+        (
+          SELECT c2.customer_id
+          FROM customer c2
+          JOIN booking b2 ON c2.customer_id = b2.customer_id
+          GROUP BY c2.customer_id
+          ORDER BY SUM(b2.booking_value) DESC
+          LIMIT 1
+        ) AS top_customer_id
+      FROM customer c
+      JOIN booking b ON c.customer_id = b.customer_id
+      LEFT JOIN ratings r ON b.booking_id = r.booking_id
+      JOIN (
+        SELECT customer_id, SUM(booking_value) AS total_spent
+        FROM booking
+        GROUP BY customer_id
+      ) spend_per_customer ON spend_per_customer.customer_id = c.customer_id;
+    `);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("❌ Error fetching customer summary:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
 
 
+// 9.2️⃣ Top 10 Customers by Total Spend
+app.get("/api/top-customers", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        c.customer_id,
+        COUNT(b.booking_id) AS total_rides,
+        ROUND(SUM(b.booking_value), 2) AS total_spent,
+        ROUND(AVG(r.customer_rating), 2) AS avg_rating
+      FROM customer c
+      JOIN booking b ON c.customer_id = b.customer_id
+      LEFT JOIN ratings r ON b.booking_id = r.booking_id
+      GROUP BY c.customer_id
+      ORDER BY total_spent DESC
+      LIMIT 10;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching top customers:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
 
 
+// 9.3️⃣ Customer Ride Frequency
+app.get("/api/customer-frequency", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        CASE
+          WHEN ride_count <= 5 THEN '1–5 rides'
+          WHEN ride_count BETWEEN 6 AND 10 THEN '6–10 rides'
+          WHEN ride_count BETWEEN 11 AND 20 THEN '11–20 rides'
+          ELSE '20+ rides'
+        END AS ride_bracket,
+        COUNT(*) AS num_customers
+      FROM (
+        SELECT c.customer_id, COUNT(b.booking_id) AS ride_count
+        FROM customer c
+        JOIN booking b ON c.customer_id = b.customer_id
+        GROUP BY c.customer_id
+      ) ride_stats
+      GROUP BY ride_bracket
+      ORDER BY num_customers DESC;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching customer frequency:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
 
 
+// 9.4️⃣ Monthly Customer Growth (fixed version)
+app.get("/api/customer-growth", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        DATE_FORMAT(first_ride, '%Y-%m') AS first_ride_month,
+        COUNT(*) AS new_customers
+      FROM (
+        SELECT c.customer_id, MIN(b.booking_ts) AS first_ride
+        FROM customer c
+        JOIN booking b ON c.customer_id = b.customer_id
+        GROUP BY c.customer_id
+      ) AS first_rides
+      GROUP BY DATE_FORMAT(first_ride, '%Y-%m')
+      ORDER BY first_ride_month;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching customer growth:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
 
 
+// 9.5️⃣ Ratings vs Spending (Correlation)
+app.get("/api/customer-ratings-spending", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        c.customer_id,
+        ROUND(AVG(r.customer_rating), 2) AS avg_rating,
+        ROUND(SUM(b.booking_value), 2) AS total_spent
+      FROM customer c
+      JOIN booking b ON c.customer_id = b.customer_id
+      LEFT JOIN ratings r ON b.booking_id = r.booking_id
+      GROUP BY c.customer_id
+      HAVING avg_rating IS NOT NULL
+      ORDER BY total_spent DESC
+      LIMIT 100;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching customer ratings vs spending:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
 
 
 // -----------------------------------------------------------
