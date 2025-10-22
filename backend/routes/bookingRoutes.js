@@ -1,74 +1,130 @@
 import express from "express";
+import mongoose from "mongoose";
 import { Booking } from "../models/booking.js";
 
 const router = express.Router();
 
-// --- 1️⃣ SUMMARY ---
+// Create dynamic collection accessors using mongoose.connection.db
+const getCollection = (name) => mongoose.connection.db.collection(name);
+
 router.get("/summary", async (req, res) => {
   try {
-    const totalBookings = await Booking.countDocuments();
-    const totalRevenue = await Booking.aggregate([{ $group: { _id: null, total: { $sum: "$Booking Value" } } }]);
-    const avgDistance = await Booking.aggregate([{ $group: { _id: null, avg: { $avg: "$Ride Distance" } } }]);
-    const avgRating = await Booking.aggregate([{ $group: { _id: null, avg: { $avg: "$Customer Rating" } } }]);
-    res.json({
-      totalBookings,
-      totalRevenue: totalRevenue[0]?.total ?? 0,
-      avgDistance: avgDistance[0]?.avg ?? 0,
-      avgRating: avgRating[0]?.avg ?? 0,
-      completionRate: 98.5,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --- 2️⃣ BOOKING STATUS ---
-router.get("/booking-status", async (req, res) => {
-  try {
-    const data = await Booking.aggregate([
-      { $group: { _id: "$Booking Status", count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-    ]);
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --- 3️⃣ WEEKLY TRENDS ---
-router.get("/weekly-trends", async (req, res) => {
-  try {
-    const data = await Booking.aggregate([
+    // =========================================================
+    // 1️⃣ BOOKING COLLECTION SUMMARY
+    // =========================================================
+    const bookingPromise = Booking.aggregate([
       {
         $group: {
-          _id: { $isoWeek: "$Date" },
-          rides: { $sum: 1 },
-          revenue: { $sum: "$Booking Value" },
+          _id: null,
+          totalBookings: { $sum: 1 },
+          totalRevenue: {
+            $sum: {
+              $cond: [
+                { $isNumber: "$Booking Value" },
+                "$Booking Value",
+                { $toDouble: "$Booking Value" },
+              ],
+            },
+          },
+          avgDistance: {
+            $avg: {
+              $cond: [
+                { $isNumber: "$Ride Distance" },
+                "$Ride Distance",
+                { $toDouble: "$Ride Distance" },
+              ],
+            },
+          },
+          avgRating: {
+            $avg: {
+              $cond: [
+                { $isNumber: "$Customer Rating" },
+                "$Customer Rating",
+                { $toDouble: "$Customer Rating" },
+              ],
+            },
+          },
         },
       },
-      { $sort: { "_id": 1 } },
     ]);
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
-// --- 4️⃣ RIDES TREND (daily) ---
-router.get("/rides-trend", async (req, res) => {
-  try {
-    const data = await Booking.aggregate([
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$Date" } },
-          count: { $sum: 1 },
+    // =========================================================
+    // 2️⃣ OTHER COLLECTIONS — DIRECT MONGO QUERIES
+    // =========================================================
+    const db = mongoose.connection.db;
+
+    const vehiclePromise = db
+      .collection("vehicle_stats")
+      .aggregate([
+        {
+          $group: {
+            _id: null,
+            avgCompletionRate: { $avg: { $toDouble: "$reliability.completion_rate" } },
+            avgVehicleRating: { $avg: { $toDouble: "$experience.avg_customer_rating" } },
+          },
         },
-      },
-      { $sort: { "_id": 1 } },
+      ])
+      .toArray();
+
+    const timePromise = db
+      .collection("time_buckets")
+      .aggregate([
+        {
+          $group: {
+            _id: null,
+            avgVTAT: { $avg: { $toDouble: "$speed.avg_vtat" } },
+            avgCTAT: { $avg: { $toDouble: "$speed.avg_ctat" } },
+          },
+        },
+      ])
+      .toArray();
+
+    const locationPromise = db
+      .collection("location_stats")
+      .aggregate([
+        {
+          $group: {
+            _id: null,
+            avgZoneCompletion: { $avg: { $toDouble: "$rates.completion_rate" } },
+          },
+        },
+      ])
+      .toArray();
+
+    // =========================================================
+    // 3️⃣ RUN ALL IN PARALLEL
+    // =========================================================
+    const [bookingAgg, vehicleAgg, timeAgg, locationAgg] = await Promise.allSettled([
+      bookingPromise,
+      vehiclePromise,
+      timePromise,
+      locationPromise,
     ]);
-    res.json(data);
+
+    // =========================================================
+    // 4️⃣ MERGE RESULTS (Safely even if some fail)
+    // =========================================================
+    const booking = bookingAgg.value?.[0] || {};
+    const vehicle = vehicleAgg.value?.[0] || {};
+    const time = timeAgg.value?.[0] || {};
+    const location = locationAgg.value?.[0] || {};
+
+    const summary = {
+      totalBookings: booking.totalBookings || 0,
+      totalRevenue: booking.totalRevenue || 0,
+      avgDistance: booking.avgDistance || 0,
+      avgRating: booking.avgRating || 0,
+      avgVTAT: time.avgVTAT || 0,
+      avgCTAT: time.avgCTAT || 0,
+      completionRate: vehicle.avgCompletionRate || location.avgZoneCompletion || 0,
+      vehicleRating: vehicle.avgVehicleRating || 0,
+    };
+
+    console.log("✅ Aggregated Summary:", summary);
+    res.json(summary);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("❌ Error aggregating MongoDB summary:", err);
+    res.status(500).json({ error: "Failed to compute operational summary" });
   }
 });
 

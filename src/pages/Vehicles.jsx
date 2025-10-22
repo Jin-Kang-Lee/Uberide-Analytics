@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import StatsCard from "../components/StatsCard";
-import CustomBarChart from "../components/BarChart";
-import DonutChart from "../components/DonutChart";
+import CustomBarChart from "../components/MongoBarChart";
+import DonutChart from "../components/MongoDonutChart";
 import Chart from "../components/Chart"; // For line chart
 import { SiMongodb } from "react-icons/si";
 import { FaCarSide, FaChartLine, FaCheckCircle, FaStar } from "react-icons/fa";
