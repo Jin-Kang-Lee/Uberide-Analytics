@@ -77,30 +77,51 @@ export default function CustomerInsights() {
           {error && <p className="text-red-500">{error}</p>}
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="p-4 bg-white dark:bg-[#181A20] rounded-2xl shadow">
-              <p>Total Customers</p>
-              <h2 className="text-xl font-bold">{summary.total_customers || 0}</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Total Customers */}
+          <div className="p-5 bg-white dark:bg-[#181A20] rounded-2xl shadow flex items-center justify-between border border-gray-200 dark:border-gray-700">
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Total Customers</p>
+              <h2 className="text-2xl font-bold">{summary.total_customers || 0}</h2>
             </div>
-            <div className="p-4 bg-white dark:bg-[#181A20] rounded-2xl shadow">
-              <p>Avg Rating</p>
-              <h2 className="text-xl font-bold">
-                {summary.avg_customer_rating || "-"}
-              </h2>
-            </div>
-            <div className="p-4 bg-white dark:bg-[#181A20] rounded-2xl shadow">
-              <p>Avg Spending</p>
-              <h2 className="text-xl font-bold">
-                ${summary.avg_spending_per_customer || 0}
-              </h2>
-            </div>
-            <div className="p-4 bg-white dark:bg-[#181A20] rounded-2xl shadow">
-              <p>Top Spender</p>
-              <h2 className="text-xl font-bold">
-                {summary.top_customer_id || "N/A"}
-              </h2>
+            <div className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 p-3 rounded-full">
+              <FaUsers className="text-xl" />
             </div>
           </div>
+
+          {/* Avg Rating */}
+          <div className="p-5 bg-white dark:bg-[#181A20] rounded-2xl shadow flex items-center justify-between border border-gray-200 dark:border-gray-700">
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Avg Rating</p>
+              <h2 className="text-2xl font-bold">{summary.avg_customer_rating || "-"}</h2>
+            </div>
+            <div className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-500 dark:text-yellow-400 p-3 rounded-full">
+              <FaStar className="text-xl" />
+            </div>
+          </div>
+
+          {/* Avg Spending */}
+          <div className="p-5 bg-white dark:bg-[#181A20] rounded-2xl shadow flex items-center justify-between border border-gray-200 dark:border-gray-700">
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Avg Spending</p>
+              <h2 className="text-2xl font-bold">${summary.avg_spending_per_customer || 0}</h2>
+            </div>
+            <div className="bg-green-100 dark:bg-green-900/40 text-green-500 dark:text-green-400 p-3 rounded-full">
+              <FaDollarSign className="text-xl" />
+            </div>
+          </div>
+
+          {/* Top Spender */}
+          <div className="p-5 bg-white dark:bg-[#181A20] rounded-2xl shadow flex items-center justify-between border border-gray-200 dark:border-gray-700">
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Top Spender</p>
+              <h2 className="text-2xl font-bold">{summary.top_customer_id || "N/A"}</h2>
+            </div>
+            <div className="bg-amber-100 dark:bg-amber-900/40 text-amber-500 dark:text-amber-400 p-3 rounded-full">
+              <FaChartLine className="text-xl" />
+            </div>
+          </div>
+        </div>
 
           {/* === ROW 1: Spending & Frequency === */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -326,25 +347,95 @@ export default function CustomerInsights() {
             </section>
 
             {/* Peak Booking Hours */}
-            <section className="bg-white dark:bg-[#181A20] rounded-2xl shadow p-4">
-              <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                <FaChartLine className="text-teal-500" />
-                Peak Booking Hours
-              </h2>
-              {peakHours.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={peakHours}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="hour" label={{ value: "Hour of Day", position: "bottom" }} />
-                    <YAxis />
-                    <Tooltip formatter={(v) => `${v} rides`} />
-                    <Line type="monotone" dataKey="ride_count" stroke="#14b8a6" strokeWidth={2} dot />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <p className="text-gray-400 text-sm">No hourly data.</p>
-              )}
-            </section>
+<section className="bg-white dark:bg-[#181A20] rounded-2xl shadow p-4 border border-gray-200 dark:border-gray-700">
+  <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+    <FaChartLine className="text-cyan-500" />
+    Peak Booking Hours
+  </h2>
+
+  {Array.isArray(peakHours) && peakHours.length > 0 ? (
+    <ResponsiveContainer width="100%" height={320}>
+      <LineChart
+        data={peakHours}
+        margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
+      >
+        {/* 🌅 Define the sunlight → sunset → moonlight gradient */}
+        <defs>
+          <linearGradient id="sunMoonGradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#a978dcff" />       
+            <stop offset="35%" stopColor="#d0954cd0" />      
+            <stop offset="70%" stopColor="#e1cd84f3" />      
+            <stop offset="100%" stopColor="#345895ff" />     
+          </linearGradient>
+        </defs>
+
+        <CartesianGrid strokeDasharray="5 5" opacity={0.5} />
+
+        {/* Time (X-Axis) */}
+        <XAxis
+          dataKey="hour"
+          tickFormatter={(h) =>
+            h === "0000" ? " 0000" : h === "2300" ? "2300 " : h
+          }
+          tick={{ fontSize: 12, fill: "#888" }}
+          label={{
+            value: "Time of Day (24H Format)",
+            position: "insideBottom",
+            offset: -5,
+            style: { fill: "#888", fontSize: 12 },
+          }}
+        />
+
+        {/* Number of Bookings (Y-Axis) */}
+        <YAxis
+          tick={{ fontSize: 12, fill: "#888" }}
+          label={{
+            value: "Number of Bookings",
+            angle: -90,
+            position: "insideLeft",
+            style: { fill: "#888", fontSize: 12 },
+          }}
+        />
+
+        {/* Tooltip */}
+        <Tooltip
+          contentStyle={{
+            backgroundColor: "#ffffffee",
+            borderRadius: "8px",
+            border: "1px solid #ddd",
+          }}
+          labelFormatter={(h) => `Hour: ${h}`}
+          formatter={(v) => [
+            `${v?.toLocaleString?.() ?? v} rides`,
+            "Bookings",
+          ]}
+        />
+
+        {/* Line (with fallback for backend key) */}
+        <Line
+          type="monotone"
+          dataKey={
+            peakHours[0]?.total_rides
+              ? "total_rides"
+              : peakHours[0]?.total_bookings
+              ? "total_bookings"
+              : Object.keys(peakHours[0])[1] // auto-detect fallback key
+          }
+          stroke="url(#sunMoonGradient)"
+          strokeWidth={3}
+          dot={{ r: 2, stroke: "#fff", strokeWidth: 0 }}
+          activeDot={{ r: 6, fill: "#FFD93D", stroke: "#fff" }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  ) : (
+    <p className="text-gray-400 text-sm text-center">
+      No hourly data available.
+    </p>
+  )}
+</section>
+
+
           </div>
 
           {/* Ratings vs Spending
