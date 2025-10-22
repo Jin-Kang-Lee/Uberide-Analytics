@@ -301,12 +301,7 @@ app.get("/api/customer-frequency", async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT 
-        CASE
-          WHEN ride_count <= 5 THEN '1–5 rides'
-          WHEN ride_count BETWEEN 6 AND 10 THEN '6–10 rides'
-          WHEN ride_count BETWEEN 11 AND 20 THEN '11–20 rides'
-          ELSE '20+ rides'
-        END AS ride_bracket,
+        ride_count AS ride_bracket,
         COUNT(*) AS num_customers
       FROM (
         SELECT c.customer_id, COUNT(b.booking_id) AS ride_count
@@ -314,8 +309,8 @@ app.get("/api/customer-frequency", async (req, res) => {
         JOIN booking b ON c.customer_id = b.customer_id
         GROUP BY c.customer_id
       ) ride_stats
-      GROUP BY ride_bracket
-      ORDER BY num_customers DESC;
+      GROUP BY ride_count
+      ORDER BY ride_count ASC;
     `);
     res.json(rows);
   } catch (err) {
@@ -323,6 +318,8 @@ app.get("/api/customer-frequency", async (req, res) => {
     res.status(500).json({ error: "Database error" });
   }
 });
+
+
 
 
 // 9.4️⃣ Monthly Customer Growth (fixed version)
@@ -371,6 +368,123 @@ app.get("/api/customer-ratings-spending", async (req, res) => {
     res.status(500).json({ error: "Database error" });
   }
 });
+
+// -----------------------------------------------------------
+// 9.6️⃣ Active vs Inactive Customers (Dynamic Threshold Version)
+// -----------------------------------------------------------
+app.get("/api/customer-active-status", async (req, res) => {
+  try {
+    const THRESHOLD_DAYS = 365; // 🟢 explicitly define threshold
+
+    const [rows] = await db.query(`
+      WITH customer_last AS (
+        SELECT 
+          c.customer_id,
+          MAX(b.booking_ts) AS last_booking
+        FROM customer c
+        JOIN booking b ON c.customer_id = b.customer_id
+        GROUP BY c.customer_id
+      ),
+      latest AS (
+        SELECT MAX(booking_ts) AS latest_booking FROM booking
+      )
+      SELECT 
+        CASE 
+          WHEN DATEDIFF(l.latest_booking, cl.last_booking) <= ${THRESHOLD_DAYS} THEN 'Active'
+          ELSE 'Inactive'
+        END AS status,
+        COUNT(*) AS num_customers,
+        FROM_UNIXTIME(AVG(UNIX_TIMESTAMP(cl.last_booking))) AS avg_last_booking,
+        ROUND(AVG(DATEDIFF(l.latest_booking, cl.last_booking)), 2) AS avg_days_since_last
+      FROM customer_last cl
+      CROSS JOIN latest l
+      GROUP BY status;
+    `);
+
+    // 🟢 Attach threshold info in response
+    res.json({
+      threshold_days: 365,
+      threshold_label: "Active = last ride within 1 year",
+      data: rows,
+    });
+  } catch (err) {
+    console.error("❌ Error fetching active vs inactive customers:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+// -----------------------------------------------------------
+// 9.7️⃣ Ride Type Popularity
+// -----------------------------------------------------------
+app.get("/api/ride-type-popularity", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        v.name AS ride_type,
+        COUNT(b.booking_id) AS rides
+      FROM booking b
+      JOIN vehicle_type v ON b.vehicle_type_id = v.vehicle_type_id
+      GROUP BY v.name
+      ORDER BY rides DESC;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching ride type popularity:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// -----------------------------------------------------------
+// 9.8️⃣ Peak Booking Hours
+// -----------------------------------------------------------
+app.get("/api/peak-booking-hours", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        HOUR(b.booking_ts) AS hour,
+        COUNT(*) AS ride_count
+      FROM booking b
+      GROUP BY hour
+      ORDER BY hour ASC;
+    `);
+
+    // Format hours like 0000, 0100, 0200
+    const formatted = rows.map(r => ({
+      hour: r.hour.toString().padStart(2, "0") + "00",
+      ride_count: r.ride_count
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error("❌ Error fetching peak booking hours:", err.message);
+    res.status(500).json({ error: "Database error: " + err.message });
+  }
+});
+
+
+
+dotenv.config();
+
+const mongoApp = express();
+mongoApp.use(cors({ origin: "http://localhost:3000" }));
+mongoApp.use(express.json());
+
+(async () => {
+  try {
+    const conn = await connectMongo();
+    console.log('🍃 MongoDB connected successfully → ${conn.connection.name}');
+    mongoApp.use("/api/mongo", rideRoutes);
+    mongoApp.use("/api/mongo", bookingRoutes);
+
+    mongoApp.listen(5002, () =>
+      console.log("🍃 MongoDB backend running on port 5002")
+    );
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err.message);
+  }
+})();
+
 
 
 // -----------------------------------------------------------
