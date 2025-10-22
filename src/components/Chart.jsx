@@ -16,8 +16,8 @@ export default function Chart({ title, endpoint }) {
 
   useEffect(() => {
     const baseURL = endpoint.startsWith("mongo/")
-      ? "http://localhost:5001/api/"
-      : "http://localhost:5000/api/";
+      ? "http://localhost:5002/api/"
+      : "http://localhost:5001/api/";
 
     axios
       .get(`${baseURL}${endpoint}`)
