@@ -20,10 +20,18 @@ export default function Chart({ title, endpoint }) {
       : "http://localhost:5001/api/";
 
     axios
-      .get(`${baseURL}${endpoint}`)
-      .then((res) => setData(res.data))
-      .catch((err) => console.error("❌ Error fetching line chart data:", err));
+      .get(`http://localhost:5001/api/${endpoint}`)
+      .then((res) => {
+        setData(res.data || []);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("❌ Error fetching chart data:", err);
+        setError("Failed to load chart data");
+        setLoading(false);
+      });
 
+    // Detect dark mode via MutationObserver
     const html = document.documentElement;
     const observer = new MutationObserver(() => {
       setIsDark(html.classList.contains("dark"));

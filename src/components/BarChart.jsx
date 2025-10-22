@@ -24,7 +24,7 @@ export default function CustomBarChart({ title, endpoint }) {
       : "http://localhost:5001/api/";
 
     axios
-      .get(`${baseURL}${endpoint}`)
+      .get(`http://localhost:5001/api/${endpoint}`)
       .then((res) => setData(res.data))
       .catch((err) => console.error("❌ Error fetching bar chart data:", err));
 

@@ -13,16 +13,16 @@ import connectMongo from "./config/mongo.js";
 import rideRoutes from "./routes/rideRoutes.js";
 
 dotenv.config();
-// Load ports from .env
-const SQL_PORT = process.env.SQL_PORT || 5001;
-const MONGO_PORT = process.env.MONGO_PORT || 5002;
 
-// =============================================================================
-// 🧱 SERVER 1: MySQL BACKEND (PORT 5000)
-// =============================================================================
-const sqlApp = express();
-sqlApp.use(cors({ origin: "http://localhost:3000" }));
-sqlApp.use(express.json());
+//MONGODB
+import { connectMongo } from "./config/mongo.js";
+import rideRoutes from "./routes/rideRoutes.js";
+import bookingRoutes from "./routes/bookingRoutes.js";
+
+
+const app = express();
+app.use(cors());
+app.use(express.json());
 
 async function startMySQLServer() {
   try {
@@ -191,53 +191,99 @@ async function startMySQLServer() {
       }
     });
 
-    // -----------------------------------------------------------
-    // 8️⃣ City & Region Insights (for Map visualization)
-    // -----------------------------------------------------------
-    sqlApp.get("/api/city-insights", async (req, res) => {
-      try {
-        const [rows] = await db.query(`
-          SELECT 
-            sub.city,
-            COUNT(sub.booking_id) AS total_rides,
-            ROUND(SUM(sub.booking_value), 2) AS total_revenue,
-            ROUND(AVG(sub.ride_distance), 2) AS avg_distance,
-            ROUND(AVG(COALESCE(sub.customer_rating, 0)), 2) AS avg_rating
-          FROM (
-            SELECT 
-              b.booking_id,
-              b.booking_value,
-              b.ride_distance,
-              r.customer_rating,
-              COALESCE(l.name, 'Unknown') AS city
-            FROM booking b
-            JOIN location l ON b.pickup_location_id = l.location_id
-            LEFT JOIN ratings r ON b.booking_id = r.booking_id
-          ) AS sub
-          GROUP BY sub.city
-          ORDER BY total_revenue DESC
-          LIMIT 10;
-        `);
 
-        // Optional coordinates
-        const cityCoords = {
-          "Barakhamba Road":  { lat: 28.6304, lon: 77.2240 },
-          "Khandsa":          { lat: 28.4319, lon: 77.0322 },
-          "Pataudi Chowk":    { lat: 28.3260, lon: 76.9550 },
-          "Subhash Chowk":    { lat: 28.4558, lon: 77.0337 },
-          "Badarpur":         { lat: 28.4962, lon: 77.3006 },
-          "Inderlok":         { lat: 28.6712, lon: 77.1760 },
-          "AIIMS":            { lat: 28.5665, lon: 77.2100 },
-          "Tughlakabad":      { lat: 28.4986, lon: 77.2577 },
-          "Greater Noida":    { lat: 28.4744, lon: 77.5030 },
-          "Mayur Vihar":      { lat: 28.6044, lon: 77.3117 },
-        };
 
-        const enriched = rows.map(row => ({
-          ...row,
-          latitude: cityCoords[row.city]?.lat || 22.9734,
-          longitude: cityCoords[row.city]?.lon || 78.6569,
-        }));
+// -----------------------------------------------------------
+// 8️⃣ City & Region Insights (for Map visualization)
+// -----------------------------------------------------------
+app.get("/api/city-insights", async (req, res) => {
+  try {
+    // 🧮 Core city metrics
+    const [rows] = await db.query(`
+      SELECT 
+        sub.city,
+        COUNT(sub.booking_id) AS total_rides,
+        ROUND(SUM(sub.booking_value), 2) AS total_revenue,
+        ROUND(AVG(sub.ride_distance), 2) AS avg_distance,
+        ROUND(AVG(COALESCE(sub.customer_rating, 0)), 2) AS avg_rating,
+
+        -- ✅ Completion Rate & Revenue per km
+        ROUND(
+          (SUM(CASE WHEN sub.status = 'Completed' THEN 1 ELSE 0 END) / COUNT(sub.booking_id)) * 100,
+          2
+        ) AS completion_rate,
+        ROUND(SUM(sub.booking_value) / NULLIF(SUM(sub.ride_distance), 0), 2) AS revenue_per_km
+
+      FROM (
+        SELECT 
+          b.booking_id,
+          b.status,                
+          b.booking_value,
+          b.ride_distance,
+          b.payment_method,
+          r.customer_rating,
+          COALESCE(l.name, 'Unknown') AS city
+        FROM booking b
+        JOIN location l ON b.pickup_location_id = l.location_id
+        LEFT JOIN ratings r ON b.booking_id = r.booking_id
+      ) AS sub
+      GROUP BY sub.city
+      ORDER BY total_revenue DESC
+      LIMIT 10;
+    `);
+
+    // 🧮 Separate query for payment preferences per city
+    const [payments] = await db.query(`
+      SELECT 
+        COALESCE(l.name, 'Unknown') AS city,
+        b.payment_method,
+        COUNT(*) AS method_count
+      FROM booking b
+      JOIN location l ON b.pickup_location_id = l.location_id
+      GROUP BY l.name, b.payment_method;
+    `);
+
+    // 🧠 Reformat payment data
+    const paymentMap = {};
+    payments.forEach(row => {
+      if (!paymentMap[row.city]) paymentMap[row.city] = {};
+      paymentMap[row.city][row.payment_method] = row.method_count;
+    });
+
+    // 🗺️ Coordinates for your cities
+    const cityCoords = {
+      "Barakhamba Road":  { lat: 28.6304, lon: 77.2240 },
+      "Khandsa":          { lat: 28.4319, lon: 77.0322 },
+      "Pataudi Chowk":    { lat: 28.3260, lon: 76.9550 },
+      "Subhash Chowk":    { lat: 28.4558, lon: 77.0337 },
+      "Badarpur":         { lat: 28.4962, lon: 77.3006 },
+      "Inderlok":         { lat: 28.6712, lon: 77.1760 },
+      "AIIMS":            { lat: 28.5665, lon: 77.2100 },
+      "Tughlakabad":      { lat: 28.4986, lon: 77.2577 },
+      "Greater Noida":    { lat: 28.4744, lon: 77.5030 },
+      "Mayur Vihar":      { lat: 28.6044, lon: 77.3117 },
+    };
+
+    // 🧩 Merge everything together
+    const enriched = rows.map(row => {
+      // calculate payment preference %
+      const payData = paymentMap[row.city] || {};
+      const total = Object.values(payData).reduce((a, b) => a + b, 0);
+      let payment_preference = "N/A";
+
+      if (total > 0) {
+        payment_preference = Object.entries(payData)
+          .map(([method, count]) => `${method}: ${((count / total) * 100).toFixed(1)}%`)
+          .join(", ");
+      }
+
+      return {
+        ...row,
+        latitude: cityCoords[row.city]?.lat || 22.9734,
+        longitude: cityCoords[row.city]?.lon || 78.6569,
+        payment_preference,
+      };
+    });
 
         res.json(enriched);
       } catch (err) {
@@ -246,20 +292,8 @@ async function startMySQLServer() {
       }
     });
 
-    // Start MySQL server
-    sqlApp.listen(SQL_PORT, () => {
-      console.log(`🧱 MySQL backend running on port ${SQL_PORT}`);
-    });
-  } catch (err) {
-    console.error("❌ MySQL connection failed:", err.message);
-  }
-}
+dotenv.config();
 
-startMySQLServer();
-
-// =============================================================================
-// 🍃 SERVER 2: MONGODB BACKEND (PORT 5001)
-// =============================================================================
 const mongoApp = express();
 mongoApp.use(cors({ origin: "http://localhost:3000" }));
 mongoApp.use(express.json());
@@ -269,11 +303,20 @@ mongoApp.use(express.json());
     const conn = await connectMongo();
     console.log(`🍃 MongoDB connected successfully → ${conn.connection.name}`);
     mongoApp.use("/api/mongo", rideRoutes);
+    mongoApp.use("/api/mongo", bookingRoutes);
 
-    mongoApp.listen(MONGO_PORT, () => {
-      console.log(`🍃 MongoDB backend running on port ${MONGO_PORT}`);
-    });
+    mongoApp.listen(5002, () =>
+      console.log("🍃 MongoDB backend running on port 5002")
+    );
   } catch (err) {
     console.error("❌ MongoDB connection failed:", err.message);
   }
 })();
+
+
+
+
+// -----------------------------------------------------------
+// Start server
+// -----------------------------------------------------------
+app.listen(5001, () => console.log("✅ Backend running on port 5001"));

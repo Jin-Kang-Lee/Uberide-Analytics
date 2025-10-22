@@ -14,8 +14,6 @@ import {
   FaUserFriends
 } from "react-icons/fa";
 import { SiMongodb } from "react-icons/si";
-import { BiTrendingUp } from "react-icons/bi";
-import { HiLightBulb } from "react-icons/hi";
 
 export default function Sidebar() {
   return (
@@ -119,28 +117,14 @@ export default function Sidebar() {
               )}
             </NavLink>
 
-            {/* Reports */}
-            <NavLink
-              to="/reports"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  isActive
-                    ? "bg-blue-600 text-white dark:bg-yellow-400 dark:text-black"
-                    : "text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#222531]"
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <FaChartLine 
-                    className={isActive ? "text-white dark:text-black" : "text-purple-600 dark:text-yellow-400"} 
-                  />
-                  <span>Reports</span>
-                </>
-              )}
-            </NavLink>
-          </div>
-        </div>
+        {/* Reports */}
+        <a
+          href="#"
+          className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#222531]"
+        >
+          <FaChartLine className="text-purple-600 dark:text-yellow-400" />
+          <span>Reports</span>
+        </a>
 
         {/* MongoDB Database Section */}
         <div>

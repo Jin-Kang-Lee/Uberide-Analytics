@@ -7,24 +7,16 @@ export default function DonutChart({ title, endpoint }) {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    const baseURL = endpoint.startsWith("mongo/")
-      ? "http://localhost:5002/api/"
-      : "http://localhost:5001/api/";
-
-    axios
-      .get(`${baseURL}${endpoint}`)
-      .then((res) => setData(res.data))
-      .catch((err) => console.error("❌ Error fetching donut chart data:", err));
-
-    const html = document.documentElement;
-    const observer = new MutationObserver(() => {
-      setIsDark(html.classList.contains("dark"));
-    });
-    observer.observe(html, { attributes: true, attributeFilter: ["class"] });
-    setIsDark(html.classList.contains("dark"));
-
-    return () => observer.disconnect();
-  }, [endpoint]);
+    axios.get(`http://localhost:5001/api/${endpoint}`)
+        .then((res) => {
+        const cleanData = res.data.map(d => ({
+            ...d,
+            revenue: Number(d.revenue) || 0,  //Force the revenue to go from a string to numeric
+        }));
+        setData(cleanData);
+        })
+        .catch((err) => console.error("❌ Error fetching donut chart data:", err));
+    }, [endpoint]);
 
   const COLORS = isDark
     ? ["#F0B90B", "#FFD84C", "#CBB26A", "#9A8B4F", "#7A6F38"]

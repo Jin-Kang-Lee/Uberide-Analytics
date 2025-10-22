@@ -3,7 +3,6 @@ import Dashboard from "./pages/Dashboard";
 import CityInsights from "./pages/CityInsights";
 import OperationalOverview from "./pages/OperationalOverview";
 import Vehicles from "./pages/Vehicles";
-import "./App.css";
 
 function App() {
   return (
