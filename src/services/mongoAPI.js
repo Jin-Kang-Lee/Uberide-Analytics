@@ -1,5 +1,5 @@
 // src/services/mongoAPI.js
-const BASE_URL = "http://localhost:5001/api/mongo";
+const BASE_URL = "http://localhost:5002/api/mongo";
 
 // ==================== HELPER FUNCTION ====================
 async function fetchData(endpoint) {

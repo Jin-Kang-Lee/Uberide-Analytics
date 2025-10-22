@@ -13,6 +13,9 @@ import connectMongo from "./config/mongo.js";
 import rideRoutes from "./routes/rideRoutes.js";
 
 dotenv.config();
+// Load ports from .env
+const SQL_PORT = process.env.SQL_PORT || 5001;
+const MONGO_PORT = process.env.MONGO_PORT || 5002;
 
 // =============================================================================
 // 🧱 SERVER 1: MySQL BACKEND (PORT 5000)
@@ -34,9 +37,7 @@ async function startMySQLServer() {
     const [dbName] = await db.query("SELECT DATABASE() AS current_db;");
     console.log(`✅ Connected to MySQL DB: ${dbName[0].current_db}`);
 
-    // -----------------------------------------------------------
-    // 1️⃣ Test Route
-    // -----------------------------------------------------------
+    // Keep your SQL endpoints as is
     sqlApp.get("/api/test", async (req, res) => {
       try {
         const [rows] = await db.query("SELECT COUNT(*) AS total_rides FROM booking;");
@@ -46,6 +47,7 @@ async function startMySQLServer() {
         res.status(500).json({ error: "Database error" });
       }
     });
+
 
     // -----------------------------------------------------------
     // 2️⃣ Summary (KPI Cards)
@@ -245,9 +247,9 @@ async function startMySQLServer() {
     });
 
     // Start MySQL server
-    sqlApp.listen(5000, () =>
-      console.log("🧱 MySQL backend running on port 5000")
-    );
+    sqlApp.listen(SQL_PORT, () => {
+      console.log(`🧱 MySQL backend running on port ${SQL_PORT}`);
+    });
   } catch (err) {
     console.error("❌ MySQL connection failed:", err.message);
   }
@@ -268,9 +270,9 @@ mongoApp.use(express.json());
     console.log(`🍃 MongoDB connected successfully → ${conn.connection.name}`);
     mongoApp.use("/api/mongo", rideRoutes);
 
-    mongoApp.listen(5001, () =>
-      console.log("🍃 MongoDB backend running on port 5001")
-    );
+    mongoApp.listen(MONGO_PORT, () => {
+      console.log(`🍃 MongoDB backend running on port ${MONGO_PORT}`);
+    });
   } catch (err) {
     console.error("❌ MongoDB connection failed:", err.message);
   }
