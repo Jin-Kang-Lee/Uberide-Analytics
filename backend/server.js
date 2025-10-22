@@ -5,6 +5,12 @@ import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
 
+//MONGODB
+import { connectMongo } from "./config/mongo.js";
+import rideRoutes from "./routes/rideRoutes.js";
+import bookingRoutes from "./routes/bookingRoutes.js";
+
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -279,7 +285,26 @@ app.get("/api/city-insights", async (req, res) => {
   }
 });
 
+dotenv.config();
 
+const mongoApp = express();
+mongoApp.use(cors({ origin: "http://localhost:3000" }));
+mongoApp.use(express.json());
+
+(async () => {
+  try {
+    const conn = await connectMongo();
+    console.log(`🍃 MongoDB connected successfully → ${conn.connection.name}`);
+    mongoApp.use("/api/mongo", rideRoutes);
+    mongoApp.use("/api/mongo", bookingRoutes);
+
+    mongoApp.listen(5002, () =>
+      console.log("🍃 MongoDB backend running on port 5002")
+    );
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err.message);
+  }
+})();
 
 
 
@@ -287,4 +312,4 @@ app.get("/api/city-insights", async (req, res) => {
 // -----------------------------------------------------------
 // Start server
 // -----------------------------------------------------------
-app.listen(5000, () => console.log("✅ Backend running on port 5000"));
+app.listen(5001, () => console.log("✅ Backend running on port 5001"));

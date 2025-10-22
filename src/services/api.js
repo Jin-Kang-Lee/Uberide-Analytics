@@ -3,7 +3,7 @@ import axios from "axios";
 
 // ✅ Reusable Axios instance
 const api = axios.create({
-  baseURL: "http://localhost:5000/api", // backend base URL
+  baseURL: "http://localhost:5001/api", // backend base URL
   timeout: 10000,
 });
 

@@ -19,7 +19,7 @@ export default function CustomBarChart({ title, endpoint }) {
 
   useEffect(() => {
     axios
-      .get(`http://localhost:5000/api/${endpoint}`)
+      .get(`http://localhost:5001/api/${endpoint}`)
       .then((res) => setData(res.data))
       .catch((err) => console.error("❌ Error fetching bar chart data:", err));
 

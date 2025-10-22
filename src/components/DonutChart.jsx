@@ -16,7 +16,7 @@ export default function DonutChart({ title, endpoint }) {
   const [data, setData] = useState([]);
 
   useEffect(() => {
-    axios.get(`http://localhost:5000/api/${endpoint}`)
+    axios.get(`http://localhost:5001/api/${endpoint}`)
         .then((res) => {
         const cleanData = res.data.map(d => ({
             ...d,

@@ -19,7 +19,7 @@ export default function Chart({ title, endpoint }) {
   useEffect(() => {
     // Fetch chart data
     axios
-      .get(`http://localhost:5000/api/${endpoint}`)
+      .get(`http://localhost:5001/api/${endpoint}`)
       .then((res) => {
         setData(res.data || []);
         setLoading(false);
