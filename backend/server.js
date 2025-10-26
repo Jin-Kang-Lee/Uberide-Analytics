@@ -286,8 +286,6 @@ app.get("/api/city-insights", async (req, res) => {
   }
 });
 
-dotenv.config();
-
 const mongoApp = express();
 mongoApp.use(cors({ origin: "http://localhost:3000" }));
 mongoApp.use(express.json());
@@ -296,9 +294,15 @@ mongoApp.use(express.json());
   try {
     const conn = await connectMongo();
     console.log(`🍃 MongoDB connected successfully → ${conn.connection.name}`);
-    mongoApp.use("/api/mongo", rideRoutes);
-    mongoApp.use("/api/mongo", bookingRoutes);
+    // Canonical analytics (time_buckets, location_stats, vehicle_stats, customer_profiles)
     mongoApp.use("/api/mongo", mongoRoutes);
+
+    // Rides-focused endpoints (bookings_clean, time_buckets weekly trends, etc.)
+    mongoApp.use("/api/mongo/rides", rideRoutes);
+
+    // Booking-focused endpoints (Mongoose Booking model + cross-collection summary)
+    mongoApp.use("/api/mongo/bookings", bookingRoutes);
+
 
     mongoApp.listen(5002, () =>
       console.log("🍃 MongoDB backend running on port 5002")
