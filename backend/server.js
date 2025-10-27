@@ -285,6 +285,235 @@ app.get("/api/city-insights", async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------
+// 9️⃣ CUSTOMER INSIGHTS SECTION
+// -----------------------------------------------------------
+
+// 9.1️⃣ Customer Summary
+app.get("/api/customer-summary", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        COUNT(DISTINCT c.customer_id) AS total_customers,
+        ROUND(AVG(r.customer_rating), 2) AS avg_customer_rating,
+        ROUND(AVG(total_spent), 2) AS avg_spending_per_customer,
+        (
+          SELECT c2.customer_id
+          FROM customer c2
+          JOIN booking b2 ON c2.customer_id = b2.customer_id
+          GROUP BY c2.customer_id
+          ORDER BY SUM(b2.booking_value) DESC
+          LIMIT 1
+        ) AS top_customer_id
+      FROM customer c
+      JOIN booking b ON c.customer_id = b.customer_id
+      LEFT JOIN ratings r ON b.booking_id = r.booking_id
+      JOIN (
+        SELECT customer_id, SUM(booking_value) AS total_spent
+        FROM booking
+        GROUP BY customer_id
+      ) spend_per_customer ON spend_per_customer.customer_id = c.customer_id;
+    `);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("❌ Error fetching customer summary:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+// 9.2️⃣ Top 10 Customers by Total Spend
+app.get("/api/top-customers", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        c.customer_id,
+        COUNT(b.booking_id) AS total_rides,
+        ROUND(SUM(b.booking_value), 2) AS total_spent,
+        ROUND(AVG(r.customer_rating), 2) AS avg_rating
+      FROM customer c
+      JOIN booking b ON c.customer_id = b.customer_id
+      LEFT JOIN ratings r ON b.booking_id = r.booking_id
+      GROUP BY c.customer_id
+      ORDER BY total_spent DESC
+      LIMIT 10;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching top customers:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+// 9.3️⃣ Customer Ride Frequency
+app.get("/api/customer-frequency", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        ride_count AS ride_bracket,
+        COUNT(*) AS num_customers
+      FROM (
+        SELECT c.customer_id, COUNT(b.booking_id) AS ride_count
+        FROM customer c
+        JOIN booking b ON c.customer_id = b.customer_id
+        GROUP BY c.customer_id
+      ) ride_stats
+      GROUP BY ride_count
+      ORDER BY ride_count ASC;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching customer frequency:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+
+
+// 9.4️⃣ Monthly Customer Growth (fixed version)
+app.get("/api/customer-growth", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        DATE_FORMAT(first_ride, '%Y-%m') AS first_ride_month,
+        COUNT(*) AS new_customers
+      FROM (
+        SELECT c.customer_id, MIN(b.booking_ts) AS first_ride
+        FROM customer c
+        JOIN booking b ON c.customer_id = b.customer_id
+        GROUP BY c.customer_id
+      ) AS first_rides
+      GROUP BY DATE_FORMAT(first_ride, '%Y-%m')
+      ORDER BY first_ride_month;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching customer growth:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+// 9.5️⃣ Ratings vs Spending (Correlation)
+app.get("/api/customer-ratings-spending", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        c.customer_id,
+        ROUND(AVG(r.customer_rating), 2) AS avg_rating,
+        ROUND(SUM(b.booking_value), 2) AS total_spent
+      FROM customer c
+      JOIN booking b ON c.customer_id = b.customer_id
+      LEFT JOIN ratings r ON b.booking_id = r.booking_id
+      GROUP BY c.customer_id
+      HAVING avg_rating IS NOT NULL
+      ORDER BY total_spent DESC
+      LIMIT 100;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching customer ratings vs spending:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// -----------------------------------------------------------
+// 9.6️⃣ Active vs Inactive Customers (Dynamic Threshold Version)
+// -----------------------------------------------------------
+app.get("/api/customer-active-status", async (req, res) => {
+  try {
+    const THRESHOLD_DAYS = 365; // 🟢 explicitly define threshold
+
+    const [rows] = await db.query(`
+      WITH customer_last AS (
+        SELECT 
+          c.customer_id,
+          MAX(b.booking_ts) AS last_booking
+        FROM customer c
+        JOIN booking b ON c.customer_id = b.customer_id
+        GROUP BY c.customer_id
+      ),
+      latest AS (
+        SELECT MAX(booking_ts) AS latest_booking FROM booking
+      )
+      SELECT 
+        CASE 
+          WHEN DATEDIFF(l.latest_booking, cl.last_booking) <= ${THRESHOLD_DAYS} THEN 'Active'
+          ELSE 'Inactive'
+        END AS status,
+        COUNT(*) AS num_customers,
+        FROM_UNIXTIME(AVG(UNIX_TIMESTAMP(cl.last_booking))) AS avg_last_booking,
+        ROUND(AVG(DATEDIFF(l.latest_booking, cl.last_booking)), 2) AS avg_days_since_last
+      FROM customer_last cl
+      CROSS JOIN latest l
+      GROUP BY status;
+    `);
+
+    // 🟢 Attach threshold info in response
+    res.json({
+      threshold_days: 365,
+      threshold_label: "Active = last ride within 1 year",
+      data: rows,
+    });
+  } catch (err) {
+    console.error("❌ Error fetching active vs inactive customers:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+// -----------------------------------------------------------
+// 9.7️⃣ Ride Type Popularity
+// -----------------------------------------------------------
+app.get("/api/ride-type-popularity", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        v.name AS ride_type,
+        COUNT(b.booking_id) AS rides
+      FROM booking b
+      JOIN vehicle_type v ON b.vehicle_type_id = v.vehicle_type_id
+      GROUP BY v.name
+      ORDER BY rides DESC;
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching ride type popularity:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// -----------------------------------------------------------
+// 9.8️⃣ Peak Booking Hours
+// -----------------------------------------------------------
+app.get("/api/peak-booking-hours", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        HOUR(b.booking_ts) AS hour,
+        COUNT(*) AS ride_count
+      FROM booking b
+      GROUP BY hour
+      ORDER BY hour ASC;
+    `);
+
+    // Format hours like 0000, 0100, 0200
+    const formatted = rows.map(r => ({
+      hour: r.hour.toString().padStart(2, "0") + "00",
+      ride_count: r.ride_count
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error("❌ Error fetching peak booking hours:", err.message);
+    res.status(500).json({ error: "Database error: " + err.message });
+  }
+});
+
+
+
 dotenv.config();
 
 const mongoApp = express();
@@ -294,7 +523,7 @@ mongoApp.use(express.json());
 (async () => {
   try {
     const conn = await connectMongo();
-    console.log(`🍃 MongoDB connected successfully → ${conn.connection.name}`);
+    console.log('🍃 MongoDB connected successfully → ${conn.connection.name}');
     mongoApp.use("/api/mongo", rideRoutes);
     mongoApp.use("/api/mongo", bookingRoutes);
 
@@ -305,7 +534,6 @@ mongoApp.use(express.json());
     console.error("❌ MongoDB connection failed:", err.message);
   }
 })();
-
 
 
 

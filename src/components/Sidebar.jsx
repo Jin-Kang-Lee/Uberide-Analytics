@@ -17,9 +17,9 @@ import { SiMongodb } from "react-icons/si";
 
 export default function Sidebar() {
   return (
-    <aside className="w-64 bg-white dark:bg-[#181A20] shadow-sm p-4 rounded-2xl">
+    <aside className="w-64 bg-white dark:bg-[#181A20] shadow-sm p-4 rounded-2xl h-screen flex flex-col">
       {/* Logo / Header */}
-      <div className="p-6 border-b">
+      <div className="p-6 border-b border-gray-200 dark:border-gray-700">
         <h1 className="text-2xl font-bold text-blue-600 dark:text-yellow-400">
           Uber Analytics
         </h1>
@@ -31,7 +31,7 @@ export default function Sidebar() {
         <NavLink
           to="/dashboard"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
+            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
               isActive
                 ? "bg-blue-600 text-white dark:bg-yellow-400 dark:text-black"
                 : "hover:bg-gray-100 dark:hover:bg-[#222531]"
@@ -42,11 +42,11 @@ export default function Sidebar() {
           <span>Dashboard</span>
         </NavLink>
 
-        {/* City & Region Insights */}
+        {/* City Insights */}
         <NavLink
           to="/city-insights"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
+            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
               isActive
                 ? "bg-blue-600 text-white dark:bg-yellow-400 dark:text-black"
                 : "hover:bg-gray-100 dark:hover:bg-[#222531]"
@@ -57,28 +57,16 @@ export default function Sidebar() {
           <span>City Insights</span>
         </NavLink>
 
-        {/* Manage Bookings */}
-        <a
-          href="#"
-          className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#222531]"
-        >
-          <FaBookOpen className="text-orange-500 dark:text-yellow-400" />
-          <span>Manage Bookings</span>
-        </a>
-
-        {/* Customers */}
-        <a
-          href="#"
-          className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#222531]"
-        >
-          <FaUsers className="text-teal-600 dark:text-yellow-400" />
-          <span>Customers</span>
-        </a>
-
-        {/* Reports */}
-        <a
-          href="#"
-          className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#222531]"
+        {/* Customer Insights */}
+        <NavLink
+          to="/customer-insights"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+              isActive
+                ? "bg-blue-600 text-white dark:bg-yellow-400 dark:text-black"
+                : "hover:bg-gray-100 dark:hover:bg-[#222531]"
+            }`
+          }
         >
           <FaChartLine className="text-purple-600 dark:text-yellow-400" />
           <span>Reports</span>
