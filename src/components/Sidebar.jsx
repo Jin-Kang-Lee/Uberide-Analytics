@@ -44,14 +44,20 @@ export default function Sidebar() {
           <span>City Insights</span>
         </NavLink>
 
-        {/* Manage Bookings */}
-        <a
-          href="#"
-          className="flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#222531]"
+         {/* Manage Bookings */}
+        <NavLink
+          to="/manage-bookings"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
+              isActive
+                ? "bg-blue-600 text-white dark:bg-yellow-400 dark:text-black"
+                : "hover:bg-gray-100 dark:hover:bg-[#222531]"
+            }`
+          }
         >
-          <FaBookOpen className="text-orange-500 dark:text-yellow-400" />
+          <FaGlobeAsia className="text-green-600 dark:text-yellow-400" />
           <span>Manage Bookings</span>
-        </a>
+        </NavLink>
 
         {/* Customers */}
         <a
