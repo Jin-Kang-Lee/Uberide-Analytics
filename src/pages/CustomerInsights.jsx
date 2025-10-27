@@ -16,8 +16,6 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ScatterChart,
-  Scatter,
   LabelList,
 } from "recharts";
 import { FaUsers, FaDollarSign, FaStar, FaChartLine } from "react-icons/fa";
@@ -32,6 +30,18 @@ export default function CustomerInsights() {
   const [rideType, setRideType] = useState([]);         // 🆕
   const [peakHours, setPeakHours] = useState([]);       // 🆕
   const [error, setError] = useState("");
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(html.classList.contains("dark"));
+    });
+    observer.observe(html, { attributes: true, attributeFilter: ["class"] });
+    setIsDarkMode(html.classList.contains("dark"));
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const loadCustomerData = async () => {
@@ -193,12 +203,35 @@ export default function CustomerInsights() {
               {topCustomers.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={topCustomers}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="customer_id" angle={-30} textAnchor="end" height={80} />
-                    <YAxis />
-                    <Tooltip formatter={(v) => `₹${v.toLocaleString()}`} />
-                    <Bar dataKey="total_spent" fill="url(#colorSpend)" radius={[5, 5 ,0 ,0]}>
-                      <LabelList dataKey="total_spent" position="top" formatter={(v) => `₹${v}`} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? "#2A2D33" : "#E5E7EB"} />
+                    <XAxis
+                      dataKey="customer_id"
+                      angle={-30}
+                      textAnchor="end"
+                      height={80}
+                      stroke={isDarkMode ? "#EAECEF" : "#374151"}
+                      tick={{ fill: isDarkMode ? "#EAECEF" : "#374151" }}
+                    />
+                    <YAxis
+                      stroke={isDarkMode ? "#EAECEF" : "#374151"}
+                      tick={{ fill: isDarkMode ? "#EAECEF" : "#374151" }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: isDarkMode ? "#181A20" : "#ffffff",
+                        color: isDarkMode ? "#EAECEF" : "#111827",
+                        borderRadius: "8px",
+                        border: isDarkMode ? "1px solid #2A2D33" : "1px solid #E5E7EB",
+                      }}
+                      formatter={(v) => `₹${v.toLocaleString()}`}
+                    />
+                    <Bar dataKey="total_spent" fill="url(#colorSpend)" radius={[5, 5, 0, 0]}>
+                      <LabelList
+                        dataKey="total_spent"
+                        position="top"
+                        formatter={(v) => `₹${v}`}
+                        fill={isDarkMode ? "#EAECEF" : "#111827"}
+                      />
                     </Bar>
                     <defs>
                       <linearGradient id="colorSpend" x1="0" y1="0" x2="0" y2="1">
@@ -208,6 +241,7 @@ export default function CustomerInsights() {
                     </defs>
                   </BarChart>
                 </ResponsiveContainer>
+
               ) : (
                 <p className="text-gray-400 text-sm">No customer data available</p>
               )}
@@ -337,29 +371,41 @@ export default function CustomerInsights() {
                     margin={{ top: 30, right: 30, left: 0, bottom: 5 }}
                     barCategoryGap="20%"
                   >
-                    <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} />
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke={isDarkMode ? "#2A2D33" : "#E5E7EB"}
+                      strokeOpacity={0.3}
+                    />
 
                     <XAxis
                       dataKey="ride_type"
-                      tick={{ fill: "#6b7280", fontSize: 12 }}
+                      tick={{
+                        fill: isDarkMode ? "#EAECEF" : "#6b7280",
+                        fontSize: 12,
+                      }}
                       interval={0}
                       angle={-20}
                       textAnchor="end"
                       height={60}
+                      stroke={isDarkMode ? "#EAECEF" : "#6b7280"}
                     />
 
                     <YAxis
-                      tick={{ fill: "#6b7280", fontSize: 12 }}
+                      tick={{
+                        fill: isDarkMode ? "#EAECEF" : "#6b7280",
+                        fontSize: 12,
+                      }}
                       tickFormatter={(v) => v.toLocaleString()}
+                      stroke={isDarkMode ? "#EAECEF" : "#6b7280"}
                     />
 
                     <Tooltip
                       formatter={(v) => [`${v.toLocaleString()} rides`, "Total Rides"]}
                       contentStyle={{
-                        backgroundColor: "#ffffff",
+                        backgroundColor: isDarkMode ? "#181A20" : "#ffffff",
                         borderRadius: "8px",
-                        border: "1px solid #e5e7eb",
-                        color: "#111827",
+                        border: isDarkMode ? "1px solid #2A2D33" : "1px solid #e5e7eb",
+                        color: isDarkMode ? "#EAECEF" : "#111827",
                       }}
                     />
 
@@ -367,18 +413,23 @@ export default function CustomerInsights() {
                       dataKey="rides"
                       name="Total Rides"
                       fill="#425575ff"
-                      radius={[6, 6, 0, 0]} // rounded top corners
+                      radius={[6, 6, 0, 0]}
                       maxBarSize={60}
                     >
                       <LabelList
                         dataKey="rides"
                         position="top"
                         formatter={(v) => v.toLocaleString()}
-                        style={{ fill: "#111827", fontSize: 12, fontWeight: 500 }}
+                        style={{
+                          fill: isDarkMode ? "#EAECEF" : "#111827",
+                          fontSize: 12,
+                          fontWeight: 500,
+                        }}
                       />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+
               ) : (
                 <p className="text-gray-400 text-sm text-center">No ride type data available.</p>
               )}
