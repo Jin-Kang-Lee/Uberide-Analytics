@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import StatsCard from "../components/StatsCard";
@@ -6,32 +6,14 @@ import Chart from "../components/Chart";
 // import DataTable from "../components/DataTable";
 import DonutChart from "../components/DonutChart";
 import BarChart from "../components/BarChart";
-import { fetchSummary } from "../services/api";
-import { useNavigate } from "react-router-dom";
-import { FaChartBar, FaChartPie, FaCalendarAlt, FaFileInvoice } from "react-icons/fa";
+import { DataContext } from "../context/DataContext";
+import { FaChartBar, FaChartPie, FaCalendarAlt } from "react-icons/fa";
 
 export default function Dashboard() {
-  const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const navigate = useNavigate(); // ✅ navigation hook
-
-  // Fetch summary metrics
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const data = await fetchSummary();
-        setSummary(data);
-      } catch (err) {
-        console.error("Error fetching summary:", err);
-        setError("Failed to load summary data");
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+  // ✅ Use cached summary from context instead of fetching again
+  const { summary } = useContext(DataContext);
+  const loading = !summary;
+  const error = null;
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#0B0E11] text-gray-800 dark:text-gray-200">

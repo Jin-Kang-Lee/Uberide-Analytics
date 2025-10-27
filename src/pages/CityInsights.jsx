@@ -1,26 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import { MapContainer, TileLayer, Circle, Tooltip, useMap } from "react-leaflet";
-import { fetchCityInsights } from "../services/api";
+// import { fetchCityInsights } from "../services/api";
 import { FaCar, FaRupeeSign, FaStar, FaRuler, FaChartLine, FaWallet } from "react-icons/fa";
 import "leaflet/dist/leaflet.css";
+import { DataContext } from "../context/DataContext";
 
 export default function CityInsights() {
-  const [cityData, setCityData] = useState([]);
+  const { cityData } = useContext(DataContext);
   const [selectedCity, setSelectedCity] = useState(null);
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const data = await fetchCityInsights();
-        setCityData(data);
-      } catch (err) {
-        console.error("❌ Error fetching city insights:", err);
-      }
-    };
-    loadData();
-  }, []);
 
   //Color scale based on revenue
   const getColor = (revenue) => {

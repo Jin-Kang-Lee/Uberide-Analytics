@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
+import { DataContext } from "../context/DataContext";
 import axios from "axios";
 import {
   LineChart,
@@ -15,22 +16,29 @@ export default function Chart({ title, endpoint }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isDark, setIsDark] = useState(false);
+  const { ridesTrend } = useContext(DataContext);
 
   useEffect(() => {
-    // Fetch chart data
-    axios
-      .get(`http://localhost:5001/api/${endpoint}`)
-      .then((res) => {
-        setData(res.data || []);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("❌ Error fetching chart data:", err);
-        setError("Failed to load chart data");
-        setLoading(false);
-      });
+    // ✅ Use cached data if available
+    if (ridesTrend && ridesTrend.length > 0) {
+      setData(ridesTrend);
+      setLoading(false);
+    } else {
+      // 🕒 Fallback if DataContext not yet ready
+      axios
+        .get(`http://localhost:5001/api/${endpoint}`)
+        .then((res) => {
+          setData(res.data || []);
+          setLoading(false);
+        })
+        .catch((err) => {
+          console.error("❌ Error fetching chart data:", err);
+          setError("Failed to load chart data");
+          setLoading(false);
+        });
+    }
 
-    // Detect dark mode via MutationObserver
+    // --- Detect dark mode (keep same observer logic) ---
     const html = document.documentElement;
     const observer = new MutationObserver(() => {
       setIsDark(html.classList.contains("dark"));
@@ -39,7 +47,8 @@ export default function Chart({ title, endpoint }) {
     setIsDark(html.classList.contains("dark"));
 
     return () => observer.disconnect();
-  }, [endpoint]);
+  }, [endpoint, ridesTrend]);
+
 
   if (loading) return <p className="text-gray-500 dark:text-gray-400">Loading chart...</p>;
   if (error) return <p className="text-red-500">{error}</p>;

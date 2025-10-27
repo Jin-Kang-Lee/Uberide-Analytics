@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -10,19 +10,28 @@ import {
   Legend,
   Cell,
 } from "recharts";
+import { DataContext } from "../context/DataContext";
 import axios from "axios";
 
 export default function CustomBarChart({ title, endpoint }) {
   const [data, setData] = useState([]);
   const [isDark, setIsDark] = useState(false);
   const [activeIndex, setActiveIndex] = useState(null); // Track hovered bar
+  const { ridesPerLocation } = useContext(DataContext);
 
   useEffect(() => {
-    axios
-      .get(`http://localhost:5001/api/${endpoint}`)
-      .then((res) => setData(res.data))
-      .catch((err) => console.error("❌ Error fetching bar chart data:", err));
+    // ✅ Load cached bar-chart data if available
+    if (ridesPerLocation && ridesPerLocation.length > 0) {
+      setData(ridesPerLocation);
+    } else {
+      // 🕒 Fallback if context not ready yet
+      axios
+        .get(`http://localhost:5001/api/${endpoint}`)
+        .then((res) => setData(res.data))
+        .catch((err) => console.error("❌ Error fetching bar chart data:", err));
+    }
 
+    // --- Dark-mode observer (unchanged) ---
     const html = document.documentElement;
     const observer = new MutationObserver(() => {
       setIsDark(html.classList.contains("dark"));
@@ -31,7 +40,8 @@ export default function CustomBarChart({ title, endpoint }) {
     setIsDark(html.classList.contains("dark"));
 
     return () => observer.disconnect();
-  }, [endpoint]);
+  }, [endpoint, ridesPerLocation]);
+
 
   // --- THEME COLORS ---
   const barColor = isDark ? "#F0B90B" : "#2563eb";

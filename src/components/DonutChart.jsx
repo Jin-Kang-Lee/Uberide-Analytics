@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { DataContext } from "../context/DataContext";
 import axios from "axios";
 
 const COLORS = [
@@ -14,18 +15,29 @@ const COLORS = [
 
 export default function DonutChart({ title, endpoint }) {
   const [data, setData] = useState([]);
+  const { revenueByVehicle } = useContext(DataContext);
 
   useEffect(() => {
-    axios.get(`http://localhost:5001/api/${endpoint}`)
+    if (revenueByVehicle && revenueByVehicle.length > 0) {
+      const cleanData = revenueByVehicle.map(d => ({
+        ...d,
+        revenue: Number(d.revenue) || 0,
+      }));
+      setData(cleanData);
+    } else {
+      // Fallback (only runs if DataContext hasn’t loaded yet)
+      axios.get(`http://localhost:5001/api/${endpoint}`)
         .then((res) => {
-        const cleanData = res.data.map(d => ({
+          const cleanData = res.data.map(d => ({
             ...d,
-            revenue: Number(d.revenue) || 0,  //Force the revenue to go from a string to numeric
-        }));
-        setData(cleanData);
+            revenue: Number(d.revenue) || 0,
+          }));
+          setData(cleanData);
         })
         .catch((err) => console.error("❌ Error fetching donut chart data:", err));
-    }, [endpoint]);
+    }
+  }, [endpoint, revenueByVehicle]); 
+
 
 
   return (
