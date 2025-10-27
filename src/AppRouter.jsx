@@ -10,15 +10,18 @@ import { DataProvider } from "./context/DataContext";
 
 export default function AppRouter() {
   return (
-    <Router>
-      <Routes>
-        {/* Default path opens Dashboard */}
-        <Route path="/" element={<Navigate to="/dashboard" />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/city-insights" element={<CityInsights />} />
-        <Route path="/customer-insights" element={<CustomerInsights />} />
-        <Route path="/mongo-vehicles" element={<Vehicles />} />
-      </Routes>
-    </Router>
+    <DataProvider>
+      <Router>
+        <Routes>
+          {/* Default path opens Dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/city-insights" element={<CityInsights />} />
+          <Route path="/customer-insights" element={<CustomerInsights />} />
+          <Route path="/mongo-vehicles" element={<Vehicles />} />
+        </Routes>
+      </Router>
+    </DataProvider>
+    
   );
 }

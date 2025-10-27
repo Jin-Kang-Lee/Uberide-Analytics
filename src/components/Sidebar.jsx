@@ -68,9 +68,10 @@ export default function Sidebar() {
             }`
           }
         >
-          <FaChartLine className="text-purple-600 dark:text-yellow-400" />
-          <span>Reports</span>
-        </a>
+          <FaUsers className="text-purple-600 dark:text-yellow-400" />
+          <span>Customer Insights</span>
+        </NavLink>
+
 
         {/* MongoDB Database Section */}
         <div>

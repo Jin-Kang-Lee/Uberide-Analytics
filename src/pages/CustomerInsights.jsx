@@ -34,19 +34,61 @@ export default function CustomerInsights() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const endpoints = [
-      "/api/customer-summary",
-      "/api/top-customers",
-      "/api/customer-frequency",
-      "/api/customer-growth",
-      "/api/customer-ratings-spending",
-      "/api/customer-active-status",  // 🆕
-      "/api/ride-type-popularity",    // 🆕
-      "/api/peak-booking-hours",      // 🆕
-    ];
+    const loadCustomerData = async () => {
+      try {
+        // ✅ 1. Check cache first
+        const cached = {
+          summary: JSON.parse(localStorage.getItem("customer_summary")),
+          topCustomers: JSON.parse(localStorage.getItem("top_customers")),
+          frequency: JSON.parse(localStorage.getItem("customer_frequency")),
+          growth: JSON.parse(localStorage.getItem("customer_growth")),
+          ratingsVsSpend: JSON.parse(localStorage.getItem("customer_ratings_spending")),
+          activeStatus: JSON.parse(localStorage.getItem("customer_active_status")),
+          rideType: JSON.parse(localStorage.getItem("ride_type_popularity")),
+          peakHours: JSON.parse(localStorage.getItem("peak_booking_hours")),
+        };
 
-    Promise.all(endpoints.map((url) => axios.get(`http://localhost:5000${url}`)))
-      .then(([s, t, f, g, r, a, rt, ph]) => {
+        // ✅ 2. If cache exists, use it immediately
+        if (
+          cached.summary &&
+          cached.topCustomers &&
+          cached.frequency &&
+          cached.growth &&
+          cached.ratingsVsSpend &&
+          cached.activeStatus &&
+          cached.rideType &&
+          cached.peakHours
+        ) {
+          console.log("🟢 Loaded Customer Insights from cache");
+          setSummary(cached.summary);
+          setTopCustomers(cached.topCustomers);
+          setFrequency(cached.frequency);
+          setGrowth(cached.growth);
+          setRatingsVsSpend(cached.ratingsVsSpend);
+          setActiveStatus(cached.activeStatus);
+          setRideType(cached.rideType);
+          setPeakHours(cached.peakHours);
+          return;
+        }
+
+        // ✅ 3. Otherwise, fetch fresh data
+        console.log("🟡 Fetching Customer Insights from backend...");
+        const endpoints = [
+          "/api/customer-summary",
+          "/api/top-customers",
+          "/api/customer-frequency",
+          "/api/customer-growth",
+          "/api/customer-ratings-spending",
+          "/api/customer-active-status",
+          "/api/ride-type-popularity",
+          "/api/peak-booking-hours",
+        ];
+
+        const [s, t, f, g, r, a, rt, ph] = await Promise.all(
+          endpoints.map((url) => axios.get(`http://localhost:5001${url}`))
+        );
+
+        // ✅ 4. Store fresh data in state
         setSummary(s.data);
         setTopCustomers(t.data);
         setFrequency(f.data);
@@ -55,9 +97,26 @@ export default function CustomerInsights() {
         setActiveStatus(a.data);
         setRideType(rt.data);
         setPeakHours(ph.data);
-      })
-      .catch(() => setError("Failed to load Customer Insights"));
+
+        // ✅ 5. Cache everything in localStorage
+        localStorage.setItem("customer_summary", JSON.stringify(s.data));
+        localStorage.setItem("top_customers", JSON.stringify(t.data));
+        localStorage.setItem("customer_frequency", JSON.stringify(f.data));
+        localStorage.setItem("customer_growth", JSON.stringify(g.data));
+        localStorage.setItem("customer_ratings_spending", JSON.stringify(r.data));
+        localStorage.setItem("customer_active_status", JSON.stringify(a.data));
+        localStorage.setItem("ride_type_popularity", JSON.stringify(rt.data));
+        localStorage.setItem("peak_booking_hours", JSON.stringify(ph.data));
+
+      } catch (err) {
+        console.error("❌ Error fetching Customer Insights:", err);
+        setError("Failed to load Customer Insights");
+      }
+    };
+
+    loadCustomerData();
   }, []);
+
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#0B0E11] text-gray-800 dark:text-gray-200">
