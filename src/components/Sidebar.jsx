@@ -11,7 +11,8 @@ import {
   FaCar,
   FaMapMarkerAlt,
   FaClock,
-  FaUserFriends
+  FaUserFriends,
+  FaHotdog
 } from "react-icons/fa";
 import { SiMongodb } from "react-icons/si";
 
@@ -57,7 +58,22 @@ export default function Sidebar() {
           <span>City Insights</span>
         </NavLink>
 
-        {/* Manage Bookings */}
+        {/* Customer Insights */}
+        <NavLink
+          to="/customer-insights"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+              isActive
+                ? "bg-blue-600 text-white dark:bg-yellow-400 dark:text-black"
+                : "hover:bg-gray-100 dark:hover:bg-[#222531]"
+            }`
+          }
+        >
+          <FaUsers className="text-purple-600 dark:text-yellow-400" />
+          <span>Customer Insights</span>
+        </NavLink>
+        
+
         {/* Manage Bookings */}
         <NavLink
           to="/manage-bookings"
@@ -69,8 +85,8 @@ export default function Sidebar() {
             }`
           }
         >
-          <FaUsers className="text-purple-600 dark:text-yellow-400" />
-          <span>Customer Insights</span>
+          <FaHotdog className="text-yellow-400 dark:text-yellow-400" />
+          <span>Manage Bookings</span>
         </NavLink>
 
 
