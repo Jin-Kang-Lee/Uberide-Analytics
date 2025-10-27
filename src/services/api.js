@@ -21,11 +21,17 @@ export const fetchRidesPerCity = async () => {
   return response.data;
 };
 
-// 🟨 3️⃣ Bookings table
+// Fetch bookings original
 export const fetchBookings = async () => {
   const response = await api.get("/bookings");
   return response.data;
 };
+
+// Manage Bookings (paged + search)
+export async function fetchBookingsPaged({ limit = 25, offset = 0, search = "" } = {}) {
+  const { data } = await api.get("/bookings", { params: { limit, offset, search } });
+  return data; // { data, total, limit, offset }
+}
 
 // 🧪 4️⃣ Test connection (optional)
 export const testConnection = async () => {
@@ -56,6 +62,43 @@ export const fetchCityInsights = async () => {
   const response = await api.get("/city-insights");
   return response.data;
 };
+
+export async function fetchCustomers() {
+  const response = await api.get(`/customers`);
+  return response.data;
+}
+
+export async function fetchVehicleTypes() {
+  const response = await api.get(`/vehicle-types`);
+  return response.data;
+}
+
+export async function fetchLocations() {
+  const response = await api.get(`/locations`);
+  return response.data;
+}
+
+// CREATE BOOKING
+export async function createBooking(payload) {
+  const response = await api.post("/bookings", payload);
+  return response.data;
+}
+
+export async function validateCustomer(id) {
+  const { data } = await api.get(`/customers/${id}`);
+  return data; // { exists: boolean, customer_id: number }
+}
+
+export async function updateBooking(id, data) {
+  const res = await api.put(`/bookings/${id}`, data);
+  return res.data;
+}
+
+export async function deleteBooking(id) {
+  const res = await api.delete(`/bookings/${id}`);
+  return res.data;
+}
+
 
 // 👥 9️⃣ CUSTOMER INSIGHTS SECTION ----------------------------
 
@@ -89,6 +132,5 @@ export const fetchCustomerRatingsSpending = async () => {
   return response.data;
 };
 
-// ------------------------------------------------------------
 
 export default api;

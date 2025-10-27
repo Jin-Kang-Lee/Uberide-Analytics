@@ -3,6 +3,7 @@ import express from "express";
 import mysql from "mysql2/promise";
 import cors from "cors";
 import dotenv from "dotenv";
+import { randomUUID } from "crypto"; 
 dotenv.config();
 
 //MONGODB
@@ -15,24 +16,31 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ---- DB Connection ----
-const db = await mysql.createConnection({
+// ---- DB Connection (POOL) ----
+const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT,
+  port: Number(process.env.DB_PORT) || 3306,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  connectTimeout: 20000,
+  enableKeepAlive: true,
 });
 
-const [dbName] = await db.query("SELECT DATABASE() AS current_db;");
+// verify once on boot
+const [dbName] = await pool.query("SELECT DATABASE() AS current_db;");
 console.log("📂 Connected to DB:", dbName[0].current_db);
+
 
 // -----------------------------------------------------------
 // 1️⃣ Test Route
 // -----------------------------------------------------------
 app.get("/api/test", async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT COUNT(*) AS total_rides FROM booking;");
+    const [rows] = await pool.query("SELECT COUNT(*) AS total_rides FROM booking;");
     res.json(rows[0]);
   } catch (err) {
     console.error("❌ Error fetching from DB:", err);
@@ -45,7 +53,7 @@ app.get("/api/test", async (req, res) => {
 // -----------------------------------------------------------
 app.get("/api/summary", async (req, res) => {
   try {
-    const [summary] = await db.query(`
+    const [summary] = await pool.query(`
       SELECT
         COUNT(b.booking_id) AS total_rides,
         ROUND(SUM(b.booking_value), 2) AS total_revenue,
@@ -74,7 +82,7 @@ app.get("/api/summary", async (req, res) => {
 // -----------------------------------------------------------
 app.get("/api/rides-per-city", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         COALESCE(l.name, 'Unknown') AS location_name,
         COUNT(b.booking_id) AS rides
@@ -94,27 +102,78 @@ app.get("/api/rides-per-city", async (req, res) => {
 // -----------------------------------------------------------
 // 4️⃣ Recent Bookings (Table)
 // -----------------------------------------------------------
+// GET /api/bookings
+// - If no query params: return the old "recent 10 with joins" for the dashboard.
+// - If any of {limit, offset, search} is present: return paginated + searchable data
+//   for the Manage Bookings table (with total count).
 app.get("/api/bookings", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const limit  = req.query.limit  ? Number(req.query.limit)  : null;
+    const offset = req.query.offset ? Number(req.query.offset) : null;
+    const search = (req.query.search || "").trim();
+    const paged  = limit !== null || offset !== null || search.length > 0;
+
+    if (!paged) {
+      // --- Dashboard mode (your existing query) ---
+      const [rows] = await pool.query(`
+        SELECT 
+          b.booking_id,
+          c.name AS customer_name,
+          lp.city AS pickup_city,
+          ld.city AS drop_city,
+          b.ride_distance AS distance_km,
+          b.booking_value AS fare_amount
+        FROM booking b
+        JOIN customer c ON b.customer_id = c.customer_id
+        JOIN location lp ON b.pickup_location_id = lp.location_id
+        JOIN location ld ON b.drop_location_id = ld.location_id
+        ORDER BY b.booking_ts DESC
+        LIMIT 10;
+      `);
+      return res.json(rows);
+    }
+
+    // --- Manage Bookings mode (paginated + search) ---
+    const pageLimit  = Number.isFinite(limit)  && limit  > 0 ? limit  : 25;
+    const pageOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;
+
+    let where = "";
+    const params = [];
+    if (search) {
+      where = "WHERE booking_id LIKE ?";
+      params.push(`%${search}%`);
+    }
+
+    // Lean list for table; joins are expensive and not needed for search/pagination
+    const [data] = await pool.query(
+      `
       SELECT 
-        b.booking_id,
-        c.name AS customer_name,
-        lp.city AS pickup_city,
-        ld.city AS drop_city,
-        b.ride_distance AS distance_km,
-        b.booking_value AS fare_amount
-      FROM booking b
-      JOIN customer c ON b.customer_id = c.customer_id
-      JOIN location lp ON b.pickup_location_id = lp.location_id
-      JOIN location ld ON b.drop_location_id = ld.location_id
-      ORDER BY b.booking_ts DESC
-      LIMIT 10;
-    `);
-    res.json(rows);
+        booking_id, customer_id, vehicle_type_id,
+        pickup_location_id, drop_location_id,
+        status, booking_value, ride_distance,
+        payment_method, currency, booking_ts
+      FROM booking
+      ${where}
+      ORDER BY booking_ts DESC
+      LIMIT ? OFFSET ?;
+      `,
+      [...params, pageLimit, pageOffset]
+    );
+
+    const [cnt] = await pool.query(
+      `SELECT COUNT(*) AS total FROM booking ${where};`,
+      params
+    );
+
+    return res.json({
+      data,
+      total: cnt[0].total,
+      limit: pageLimit,
+      offset: pageOffset,
+    });
   } catch (err) {
-    console.error("❌ Error fetching bookings:", err);
-    res.status(500).json({ error: "Database error" });
+    console.error("❌ GET /api/bookings:", err);
+    res.status(500).json({ error: "Failed to fetch bookings." });
   }
 });
 
@@ -125,7 +184,7 @@ app.get("/api/bookings", async (req, res) => {
 // -----------------------------------------------------------
 app.get("/api/revenue-by-vehicle", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         v.name AS vehicle_type,
         ROUND(SUM(b.booking_value), 2) AS revenue
@@ -146,7 +205,7 @@ app.get("/api/revenue-by-vehicle", async (req, res) => {
 // -----------------------------------------------------------
 app.get("/api/rides-per-location", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         COALESCE(l.name, 'Unknown') AS location_name,
         COUNT(b.booking_id) AS rides
@@ -168,7 +227,7 @@ app.get("/api/rides-per-location", async (req, res) => {
 // -----------------------------------------------------------
 app.get("/api/rides-trend", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         DATE_FORMAT(b.booking_ts, '%Y-%m') AS month,
         COUNT(*) AS total_rides
@@ -192,7 +251,7 @@ app.get("/api/rides-trend", async (req, res) => {
 app.get("/api/city-insights", async (req, res) => {
   try {
     // 🧮 Core city metrics
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         sub.city,
         COUNT(sub.booking_id) AS total_rides,
@@ -226,7 +285,7 @@ app.get("/api/city-insights", async (req, res) => {
     `);
 
     // 🧮 Separate query for payment preferences per city
-    const [payments] = await db.query(`
+    const [payments] = await pool.query(`
       SELECT 
         COALESCE(l.name, 'Unknown') AS city,
         b.payment_method,
@@ -284,6 +343,303 @@ app.get("/api/city-insights", async (req, res) => {
     res.status(500).json({ error: "Database error" });
   }
 });
+
+app.get("/api/customers", async (req, res) => {
+  console.time("/api/customers");
+  try {
+    const [rows] = await pool.query(`
+      SELECT customer_id, name
+      FROM customer
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ /api/customers:", { message: err.message, sqlMessage: err.sqlMessage });
+    res.status(500).json({ error: err.sqlMessage || "Failed to fetch customers" });
+  } finally {
+    console.timeEnd("/api/customers");
+  }
+});
+
+app.get("/api/vehicle-types", async (req, res) => {
+  console.time("/api/vehicle-types");
+  try {
+    const [rows] = await pool.query(`
+      SELECT vehicle_type_id, name AS type_name
+      FROM vehicle_type
+      ORDER BY name ASC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ /api/vehicle-types:", { message: err.message, sqlMessage: err.sqlMessage });
+    res.status(500).json({ error: err.sqlMessage || "Failed to fetch vehicle types" });
+  } finally {
+    console.timeEnd("/api/vehicle-types");
+  }
+});
+
+app.get("/api/locations", async (req, res) => {
+  console.time("/api/locations");
+  try {
+    const [rows] = await pool.query(`
+      SELECT
+        location_id,
+        name  AS location_name,
+        name  AS city
+      FROM location
+      ORDER BY location_name ASC
+      LIMIT 500
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ /api/locations:", { message: err.message, sqlMessage: err.sqlMessage });
+    res.status(500).json({ error: err.sqlMessage || "Failed to fetch locations" });
+  } finally {
+    console.timeEnd("/api/locations");
+  }
+});
+
+
+// ✅ Validate a customer_id (VARCHAR-safe)
+app.get("/api/customers/:id", async (req, res) => {
+  try {
+    const id = (req.params.id || "").trim();
+
+    if (!id) return res.status(400).json({ exists: false, error: "Missing customer_id" });
+
+    const [rows] = await pool.query(
+      `SELECT customer_id FROM customer WHERE customer_id = ? LIMIT 1`,
+      [id]
+    );
+
+    res.json({ exists: rows.length > 0, customer_id: id });
+  } catch (err) {
+    console.error("❌ /api/customers/:id:", err.message);
+    res.status(500).json({ error: "Failed to validate customer" });
+  }
+});
+
+
+
+
+
+// at top (already present): import { randomUUID } from "crypto";
+
+// ---- helpers ----
+function toMySqlDateTime(dt) {
+  if (!dt) return null;
+  const s = String(dt).trim().replace("T", " ").replace("Z", "");
+  return s.length === 16 ? `${s}:00` : s.slice(0, 19);
+}
+
+// Generate next booking id like CNR1058308, based on current max.
+// We normalize by removing spaces before reading the numeric part.
+async function getNextBookingId() {
+  const [rows] = await pool.query(
+    `
+    SELECT
+      MAX(CAST(SUBSTRING(REPLACE(booking_id, ' ', ''), 4) AS UNSIGNED)) AS max_num
+    FROM booking
+    WHERE REPLACE(booking_id,' ','') REGEXP '^CNR[0-9]+$'
+    `
+  );
+  const currentMax = rows?.[0]?.max_num || 0;
+  return `CNR${currentMax + 1}`; // no space in new IDs
+}
+
+// Ensure the id doesn't exist (very unlikely after MAX(), but be safe).
+async function allocateBookingId() {
+  // try a few times; if a race happens, bump and retry
+  let attempts = 0;
+  let candidate;
+  while (attempts < 5) {
+    candidate = await getNextBookingId();
+    const [exists] = await pool.query(
+      `SELECT 1 FROM booking WHERE booking_id = ? LIMIT 1`,
+      [candidate]
+    );
+    if (exists.length === 0) return candidate;
+
+    // If somehow taken, increment its numeric tail by 1 and test again
+    const num = Number(candidate.replace(/^CNR\s*/, "").replace(" ", "").slice(3)) || 0;
+    candidate = `CNR${num + 1}`;
+    attempts++;
+  }
+  // super-rare fallback: unique-ish suffix
+  return `CNR${Date.now()}`;
+}
+
+// ---- route ----
+app.post("/api/bookings", async (req, res) => {
+  try {
+    const {
+      customer_id,
+      vehicle_type_id,
+      pickup_location_id,
+      drop_location_id,
+      booking_ts,
+      status,
+      booking_value,
+      ride_distance,
+      payment_method,
+      currency,
+    } = req.body || {};
+
+    // basic validation
+    if (
+      !customer_id ||
+      !vehicle_type_id ||
+      !pickup_location_id ||
+      !drop_location_id ||
+      !booking_ts ||
+      !payment_method
+    ) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+    if (pickup_location_id === drop_location_id) {
+      return res.status(400).json({ error: "Pickup and drop must be different." });
+    }
+
+    const cid = String(customer_id).trim();
+    const vt  = Number(vehicle_type_id);
+    const pk  = Number(pickup_location_id);
+    const dp  = Number(drop_location_id);
+    const ts  = toMySqlDateTime(booking_ts);
+
+    // FK validations (clear 4xx messages)
+    const [[cust], [veh], [pick], [drop]] = await Promise.all([
+      pool.query(`SELECT 1 FROM customer WHERE customer_id = ? LIMIT 1`, [cid]),
+      pool.query(`SELECT 1 FROM vehicle_type WHERE vehicle_type_id = ? LIMIT 1`, [vt]),
+      pool.query(`SELECT 1 FROM location WHERE location_id = ? LIMIT 1`, [pk]),
+      pool.query(`SELECT 1 FROM location WHERE location_id = ? LIMIT 1`, [dp]),
+    ]);
+    if (cust.length === 0) return res.status(400).json({ error: "Customer not found." });
+    if (veh.length === 0)  return res.status(400).json({ error: "Vehicle type not found." });
+    if (pick.length === 0) return res.status(400).json({ error: "Pickup location not found." });
+    if (drop.length === 0) return res.status(400).json({ error: "Drop location not found." });
+
+    // allocate booking_id in your "CNR<number>" format
+    let booking_id = await allocateBookingId();
+
+    const sql = `
+      INSERT INTO booking
+        (booking_id, customer_id, vehicle_type_id, pickup_location_id, drop_location_id,
+         booking_ts, status, booking_value, ride_distance, payment_method, currency)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const params = [
+      booking_id,
+      cid,
+      vt,
+      pk,
+      dp,
+      ts,
+      status || "Pending",
+      booking_value ?? 0,
+      ride_distance ?? 0,
+      payment_method,
+      currency || "INR",
+    ];
+
+    // if booking_id is UNIQUE/PK, any collision throws and we can retry (rare)
+    try {
+      await pool.execute(sql, params);
+    } catch (err) {
+      if (err.code === "ER_DUP_ENTRY") {
+        // race: retry once with a fresh id
+        booking_id = await allocateBookingId();
+        params[0] = booking_id;
+        await pool.execute(sql, params);
+      } else {
+        throw err;
+      }
+    }
+
+    return res.status(201).json({ ok: true, booking_id, message: "Booking created successfully." });
+  } catch (err) {
+    const code = err?.code || err?.errno;
+    if (code === "ER_NO_REFERENCED_ROW_2" || code === 1452) {
+      return res.status(400).json({ error: "Foreign key does not exist (vehicle type or location)." });
+    }
+    if (code === "ER_BAD_FIELD_ERROR" || code === 1054) {
+      return res.status(500).json({ error: `Column mismatch: ${err.sqlMessage}` });
+    }
+    console.error("❌ POST /api/bookings:", {
+      message: err.message,
+      code: err.code,
+      errno: err.errno,
+      sqlMessage: err.sqlMessage,
+      sql: err.sql,
+    });
+    return res.status(500).json({ error: "Failed to create booking." });
+  }
+});
+
+
+// PUT /api/bookings/:booking_id
+app.put("/api/bookings/:booking_id", async (req, res) => {
+  try {
+    const { booking_id } = req.params;
+    const updates = req.body || {};
+
+    const allowedFields = [
+      "status",
+      "booking_value",
+      "ride_distance",
+      "payment_method",
+      "currency",
+    ];
+
+    const setClauses = [];
+    const values = [];
+
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        setClauses.push(`${field} = ?`);
+        values.push(updates[field]);
+      }
+    }
+
+    if (!setClauses.length) {
+      return res.status(400).json({ error: "No valid fields to update." });
+    }
+
+    values.push(booking_id);
+
+    const [result] = await pool.query(
+      `UPDATE booking SET ${setClauses.join(", ")} WHERE booking_id = ?;`,
+      values
+    );
+
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: "Booking not found." });
+
+    res.json({ ok: true, message: "Booking updated." });
+  } catch (err) {
+    console.error("❌ PUT /api/bookings:", err);
+    res.status(500).json({ error: "Failed to update booking." });
+  }
+});
+
+// DELETE /api/bookings/:booking_id
+app.delete("/api/bookings/:booking_id", async (req, res) => {
+  try {
+    const { booking_id } = req.params;
+    const [result] = await pool.query(
+      `DELETE FROM booking WHERE booking_id = ?;`,
+      [booking_id]
+    );
+
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: "Booking not found." });
+
+    res.json({ ok: true, message: "Booking deleted." });
+  } catch (err) {
+    console.error("❌ DELETE /api/bookings:", err);
+    res.status(500).json({ error: "Failed to delete booking." });
+  }
+});
+
+
 
 // -----------------------------------------------------------
 // 9️⃣ CUSTOMER INSIGHTS SECTION

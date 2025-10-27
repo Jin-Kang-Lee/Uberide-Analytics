@@ -7,6 +7,7 @@ import CityInsights from "./pages/CityInsights";
 import CustomerInsights from "./pages/CustomerInsights";
 import Vehicles from "./pages/Vehicles";
 import { DataProvider } from "./context/DataContext";
+import Bookings from "./pages/Bookings";
 
 export default function AppRouter() {
   return (
@@ -17,8 +18,7 @@ export default function AppRouter() {
           <Route path="/" element={<Navigate to="/dashboard" />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/city-insights" element={<CityInsights />} />
-          <Route path="/customer-insights" element={<CustomerInsights />} />
-          <Route path="/mongo-vehicles" element={<Vehicles />} />
+          <Route path="/manage-bookings" element={<Bookings />} />
         </Routes>
       </Router>
     </DataProvider>

@@ -57,11 +57,12 @@ export default function Sidebar() {
           <span>City Insights</span>
         </NavLink>
 
-        {/* Customer Insights */}
+        {/* Manage Bookings */}
+        {/* Manage Bookings */}
         <NavLink
-          to="/customer-insights"
+          to="/manage-bookings"
           className={({ isActive }) =>
-            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+            `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
               isActive
                 ? "bg-blue-600 text-white dark:bg-yellow-400 dark:text-black"
                 : "hover:bg-gray-100 dark:hover:bg-[#222531]"
