@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 
-// ---- helpers ----
+/* ------------------------------- helpers -------------------------------- */
 function fmtTime(input) {
   if (!input) return "—";
   if (typeof input === "object" && input.$date) {
@@ -13,51 +13,59 @@ function fmtTime(input) {
   return isNaN(d) ? String(input) : d.toLocaleString();
 }
 
+const labelList = [
+  ["Date", ""],
+  ["Time", ""],
+  ["Booking ID", ""],
+  ["Booking Status", ""],
+  ["Customer ID", ""],
+  ["Vehicle Type", ""],
+  ["Pickup Location", ""],
+  ["Drop Location", ""],
+  ["Avg VTAT", ""],
+  ["Avg CTAT", ""],
+  ["Cancelled Rides by Customer", ""],
+  ["Reason for cancelling by Customer", ""],
+  ["Cancelled Rides by Driver", ""],
+  ["Driver Cancellation Reason", ""],
+  ["Incomplete Rides", ""],
+  ["Incomplete Rides Reason", ""],
+  ["Booking Value", ""],
+  ["Ride Distance", ""],
+  ["Driver Ratings", ""],
+  ["Customer Rating", ""],
+  ["Payment Method", ""],
+  ["DateTime", ""],
+  ["DayOfWeek", ""],
+  ["Hour", ""],
+];
+
+const emptyToNull = (v) => (v === "" ? null : v);
+
+/* ------------------------------ component ------------------------------- */
 export default function TripReplay() {
   const [bookingId, setBookingId] = useState("");
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ------- Create modal -------
+  // Create / Update modals
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    Date: "",
-    Time: "",
-    "Booking ID": "",
-    "Booking Status": "",
-    "Customer ID": "",
-    "Vehicle Type": "",
-    "Pickup Location": "",
-    "Drop Location": "",
-    "Avg VTAT": "",
-    "Avg CTAT": "",
-    "Cancelled Rides by Customer": "",
-    "Reason for cancelling by Customer": "",
-    "Cancelled Rides by Driver": "",
-    "Driver Cancellation Reason": "",
-    "Incomplete Rides": "",
-    "Incomplete Rides Reason": "",
-    "Booking Value": "",
-    "Ride Distance": "",
-    "Driver Ratings": "",
-    "Customer Rating": "",
-    "Payment Method": "",
-    DateTime: "",
-    DayOfWeek: "",
-    Hour: "",
-  });
+  const [createForm, setCreateForm] = useState(
+    labelList.reduce((acc, [label]) => ({ ...acc, [label]: "" }), {})
+  );
 
-  // ------- Edit modal (same fields as create; Booking ID & Customer ID are read-only) -------
   const [showEdit, setShowEdit] = useState(false);
-  const [editForm, setEditForm] = useState({ ...createForm });
+  const [editForm, setEditForm] = useState(
+    labelList.reduce((acc, [label]) => ({ ...acc, [label]: "" }), {})
+  );
 
-  // ---------- CREATE (to bookings_clean) ----------
+  /* ------------------------------- CREATE ------------------------------- */
   const openCreateModal = () => {
     setErr("");
     setCreateForm((prev) => ({
       ...prev,
-      "Booking ID": bookingId || prev["Booking ID"],
+      ["Booking ID"]: bookingId || prev["Booking ID"],
     }));
     setShowCreate(true);
   };
@@ -78,87 +86,60 @@ export default function TripReplay() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-
       setShowCreate(false);
-      if (!bookingId && (json?.booking_id || json?.["Booking ID"])) {
-        setBookingId(json.booking_id || json["Booking ID"]);
-        await fetchReplay(json.booking_id || json["Booking ID"]);
+      if (!bookingId && (json?.["Booking ID"] || json?.booking_id)) {
+        setBookingId(json["Booking ID"] || json.booking_id);
       }
     } catch (e) {
       setErr(`Create failed: ${e.message}`);
     }
   };
 
-  // ---------- READ (from bookings_clean) ----------
-  const fetchReplay = useCallback(
-    async (idOverride) => {
-      setErr("");
-      setData(null);
-      const id = (idOverride ?? bookingId).trim();
-      if (!id) {
-        setErr("Enter a Booking ID");
-        return;
-      }
+  /* -------------------------------- READ -------------------------------- */
+  const fetchBooking = useCallback(async () => {
+    setErr("");
+    setData(null);
+    const id = (bookingId || "").trim();
+    if (!id) {
+      setErr("Enter a Booking ID");
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await fetch(
+        `http://localhost:5002/api/mongo/bookings/${encodeURIComponent(id)}`
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+      setData(json);
+    } catch (e) {
+      setErr(`Failed to load booking: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [bookingId]);
 
-      try {
-        setLoading(true);
-        const res = await fetch(
-          `http://localhost:5002/api/mongo/bookings/${encodeURIComponent(id)}`
-        );
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-        setData(json);
-      } catch (e) {
-        setErr(`Failed to load booking: ${e.message}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [bookingId]
-  );
-
-  // ---------- UPDATE (PUT to bookings_clean; same fields as create; Booking/Customer IDs locked) ----------
+  /* ------------------------------- UPDATE ------------------------------- */
   const openEditModal = () => {
     if (!data) return setErr("Load a booking first before editing.");
-    const src = data;
-    setEditForm({
-      Date: src?.Date ?? "",
-      Time: src?.Time ?? "",
-      "Booking ID": src?.["Booking ID"] ?? "",
-      "Booking Status": src?.["Booking Status"] ?? "",
-      "Customer ID": src?.["Customer ID"] ?? "",
-      "Vehicle Type": src?.["Vehicle Type"] ?? "",
-      "Pickup Location": src?.["Pickup Location"] ?? "",
-      "Drop Location": src?.["Drop Location"] ?? "",
-      "Avg VTAT": src?.["Avg VTAT"] ?? "",
-      "Avg CTAT": src?.["Avg CTAT"] ?? "",
-      "Cancelled Rides by Customer": src?.["Cancelled Rides by Customer"] ?? "",
-      "Reason for cancelling by Customer":
-        src?.["Reason for cancelling by Customer"] ?? "",
-      "Cancelled Rides by Driver": src?.["Cancelled Rides by Driver"] ?? "",
-      "Driver Cancellation Reason": src?.["Driver Cancellation Reason"] ?? "",
-      "Incomplete Rides": src?.["Incomplete Rides"] ?? "",
-      "Incomplete Rides Reason": src?.["Incomplete Rides Reason"] ?? "",
-      "Booking Value": src?.["Booking Value"] ?? "",
-      "Ride Distance": src?.["Ride Distance"] ?? "",
-      "Driver Ratings": src?.["Driver Ratings"] ?? "",
-      "Customer Rating": src?.["Customer Rating"] ?? "",
-      "Payment Method": src?.["Payment Method"] ?? "",
-      DateTime: src?.DateTime ?? "",
-      DayOfWeek: src?.DayOfWeek ?? "",
-      Hour: src?.Hour ?? "",
+    // Prefill with current values
+    const prefill = {};
+    labelList.forEach(([label]) => {
+      prefill[label] = data?.[label] ?? "";
     });
+    setEditForm(prefill);
     setShowEdit(true);
   };
 
-  const submitEdit = async () => {
-    const id = (data?.["Booking ID"] || bookingId || "").trim();
+  const saveEdits = async () => {
+    const id = (bookingId || editForm["Booking ID"] || "").trim();
     if (!id) return setErr("Enter or load a booking ID to update.");
 
-    const payload = {};
+    // Booking ID & Customer ID immutable on the server; we still disable them in UI.
+    const body = {};
     Object.entries(editForm).forEach(([k, v]) => {
       const n = typeof v === "string" ? v.trim() : v;
-      payload[k] = n === "" ? null : n;
+      body[k] = n === "" ? null : n;
     });
 
     try {
@@ -167,21 +148,22 @@ export default function TripReplay() {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         }
       );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+      setData(json); // server already returns the projected doc
       setShowEdit(false);
-      await fetchReplay(id);
+      setErr("");
     } catch (e) {
       setErr(`Update failed: ${e.message}`);
     }
   };
 
-  // ---------- DELETE (delete bookings_clean doc) ----------
-  const deleteTrip = async () => {
-    const id = bookingId.trim();
+  /* -------------------------------- DELETE ------------------------------- */
+  const deleteBooking = async () => {
+    const id = (bookingId || "").trim();
     if (!id) return setErr("Enter a booking ID to delete.");
     try {
       const res = await fetch(
@@ -197,17 +179,16 @@ export default function TripReplay() {
     }
   };
 
-  // ---------- Change Stream Listener (SSE on bookings_clean) ----------
+  /* ------------------------------ SSE (bookings) ------------------------------ */
   useEffect(() => {
-    const es = new EventSource("http://localhost:5002/api/mongo/trips/stream");
-    es.onmessage = async (e) => {
+    const es = new EventSource("http://localhost:5002/api/mongo/bookings/stream");
+    es.onmessage = (e) => {
       try {
         const change = JSON.parse(e.data);
-        const doc = change?.fullDocument || {};
-        const changedId =
-          doc?._canonical?.booking_id || doc?.["Booking ID"] || "";
-        if (changedId && changedId === bookingId.trim()) {
-          await fetchReplay(changedId);
+        const id = data?.["Booking ID"] || bookingId;
+        if (id && change?.booking_id === id) {
+          // Refresh view with the latest doc from stream
+          setData(change.fullDocument);
         }
       } catch {
         /* ignore bad payloads */
@@ -217,40 +198,13 @@ export default function TripReplay() {
       console.warn("⚠️ SSE connection lost, retrying…");
     };
     return () => es.close();
-  }, [bookingId, fetchReplay]);
+  }, [data, bookingId]);
 
   const onKeyDown = (e) => {
-    if (e.key === "Enter") fetchReplay();
+    if (e.key === "Enter") fetchBooking();
   };
 
-  // ---- field list for display in order ----
-  const FIELD_ORDER = [
-    "Date",
-    "Time",
-    "Booking ID",
-    "Booking Status",
-    "Customer ID",
-    "Vehicle Type",
-    "Pickup Location",
-    "Drop Location",
-    "Avg VTAT",
-    "Avg CTAT",
-    "Cancelled Rides by Customer",
-    "Reason for cancelling by Customer",
-    "Cancelled Rides by Driver",
-    "Driver Cancellation Reason",
-    "Incomplete Rides",
-    "Incomplete Rides Reason",
-    "Booking Value",
-    "Ride Distance",
-    "Driver Ratings",
-    "Customer Rating",
-    "Payment Method",
-    "DateTime",
-    "DayOfWeek",
-    "Hour",
-  ];
-
+  /* --------------------------------- UI --------------------------------- */
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#0B0E11] text-gray-800 dark:text-gray-200">
       <Sidebar />
@@ -261,7 +215,7 @@ export default function TripReplay() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-semibold text-gray-800 dark:text-yellow-400">
-              Trip Replay (MongoDB · Create/Update → bookings_clean)
+              Trip Replay (MongoDB · Create → bookings_clean · Live Updates)
             </h1>
           </div>
 
@@ -277,7 +231,7 @@ export default function TripReplay() {
               />
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => fetchReplay()}
+                  onClick={fetchBooking}
                   disabled={loading}
                   className={`px-4 py-2 rounded text-white ${
                     loading
@@ -287,12 +241,14 @@ export default function TripReplay() {
                 >
                   {loading ? "Loading…" : "Load"}
                 </button>
+
                 <button
                   onClick={openCreateModal}
                   className="px-4 py-2 rounded text-white bg-blue-600 hover:bg-blue-700"
                 >
                   Create
                 </button>
+
                 <button
                   onClick={openEditModal}
                   className="px-4 py-2 rounded text-white bg-yellow-500 hover:bg-yellow-600"
@@ -300,8 +256,9 @@ export default function TripReplay() {
                 >
                   Update
                 </button>
+
                 <button
-                  onClick={deleteTrip}
+                  onClick={deleteBooking}
                   className="px-4 py-2 rounded text-white bg-red-600 hover:bg-red-700"
                 >
                   Delete
@@ -314,65 +271,40 @@ export default function TripReplay() {
           {/* Booking Details */}
           <div className="bg-white dark:bg-[#1A1D21] border border-gray-100 dark:border-gray-700 rounded-xl p-4">
             <h2 className="text-xl font-semibold mb-3">Booking</h2>
-
-            {!data ? (
-              <p className="text-gray-500 dark:text-gray-400">
-                Enter a booking ID and click <em>Load</em> to view booking details.
-              </p>
-            ) : (
+            {data ? (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                  {FIELD_ORDER.map((label) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  {labelList.map(([label]) => (
                     <div key={label}>
                       <span className="font-medium">{label}:</span>{" "}
-                      {data?.[label] ?? "—"}
+                      {data[label] === null || data[label] === undefined || data[label] === ""
+                        ? "—"
+                        : String(data[label])}
                     </div>
                   ))}
-                  {/* Last Updated */}
-                  <div className="col-span-1 sm:col-span-2 lg:col-span-3 mt-2">
+                  <div>
                     <span className="font-medium">Date &amp; Time Last Updated:</span>{" "}
-                    {fmtTime(data?.lastUpdatedAt || data?.updatedAt)}
+                    {fmtTime(data.updatedAt)}
                   </div>
                 </div>
               </>
+            ) : (
+              <p className="text-gray-500 dark:text-gray-400">
+                Enter a booking ID and click <em>Load</em> to view details.
+              </p>
             )}
           </div>
         </main>
       </div>
 
-      {/* ------- Create Modal ------- */}
+      {/* ---------------------- Create Modal (labels) ---------------------- */}
       {showCreate && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
           <div className="bg-[#1A1D21] border border-gray-700 p-6 rounded-xl w-full max-w-5xl text-gray-200">
             <h2 className="text-xl font-semibold mb-4">Create Booking (bookings_clean)</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {[
-                ["Date", "e.g., 2024-05-19 or 2024-05-19T00:00:00.000Z"],
-                ["Time", "e.g., 18:47:16"],
-                ["Booking ID", "e.g., CNR2948784"],
-                ["Booking Status", "Completed / Created / Cancelled / Incomplete"],
-                ["Customer ID", "e.g., CID7747807"],
-                ["Vehicle Type", "Bike / Auto / Sedan ..."],
-                ["Pickup Location", "e.g., Rohini West"],
-                ["Drop Location", "e.g., Yamuna Bank"],
-                ["Avg VTAT", "number (mins) or blank"],
-                ["Avg CTAT", "number (mins) or blank"],
-                ["Cancelled Rides by Customer", "number or blank"],
-                ["Reason for cancelling by Customer", "text or blank"],
-                ["Cancelled Rides by Driver", "number or blank"],
-                ["Driver Cancellation Reason", "text or blank"],
-                ["Incomplete Rides", "number or blank"],
-                ["Incomplete Rides Reason", "text or blank"],
-                ["Booking Value", "number (₹) e.g., 626"],
-                ["Ride Distance", "number (km) e.g., 27.96"],
-                ["Driver Ratings", "float e.g., 3.9"],
-                ["Customer Rating", "float e.g., 4.3"],
-                ["Payment Method", "e.g., Uber Wallet"],
-                ["DateTime", "e.g., 2024-05-19 18:47:16"],
-                ["DayOfWeek", "e.g., Sunday"],
-                ["Hour", "0-23"],
-              ].map(([label, ph]) => (
+              {labelList.map(([label]) => (
                 <div className="flex flex-col" key={label}>
                   <label className="text-sm mb-1">{label}</label>
                   <input
@@ -381,7 +313,7 @@ export default function TripReplay() {
                     onChange={(e) =>
                       setCreateForm((p) => ({ ...p, [label]: e.target.value }))
                     }
-                    placeholder={ph}
+                    placeholder=""
                   />
                 </div>
               ))}
@@ -405,35 +337,35 @@ export default function TripReplay() {
         </div>
       )}
 
-      {/* ------- Edit Modal (same fields; Booking ID & Customer ID disabled) ------- */}
+      {/* ----------------------- Edit Modal (labels) ----------------------- */}
       {showEdit && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
           <div className="bg-[#1A1D21] border border-gray-700 p-6 rounded-xl w-full max-w-5xl text-gray-200">
-            <h2 className="text-xl font-semibold mb-4">Update Booking (bookings_clean)</h2>
+            <h2 className="text-xl font-semibold mb-4">Edit Booking (bookings_clean)</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {Object.entries(editForm).map(([label, value]) => {
-                const isLocked =
+              {labelList.map(([label]) => {
+                const readOnly =
                   label === "Booking ID" || label === "Customer ID";
                 return (
                   <div className="flex flex-col" key={label}>
                     <label className="text-sm mb-1">{label}</label>
                     <input
-                      disabled={isLocked}
                       className={`border border-gray-600 bg-[#111318] rounded px-2 py-1 text-sm ${
-                        isLocked ? "opacity-70 cursor-not-allowed" : ""
+                        readOnly ? "opacity-70 cursor-not-allowed" : ""
                       }`}
-                      value={value ?? ""}
+                      value={editForm[label] ?? ""}
                       onChange={(e) =>
                         setEditForm((p) => ({ ...p, [label]: e.target.value }))
                       }
+                      disabled={readOnly}
                     />
                   </div>
                 );
               })}
             </div>
 
-            <div className="flex justify-end gap-3 mt-6">
+            <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setShowEdit(false)}
                 className="px-4 py-2 rounded bg-gray-600 hover:bg-gray-700"
@@ -441,7 +373,7 @@ export default function TripReplay() {
                 Cancel
               </button>
               <button
-                onClick={submitEdit}
+                onClick={saveEdits}
                 className="px-4 py-2 rounded bg-green-600 hover:bg-green-700"
               >
                 Save Changes
