@@ -1,56 +1,49 @@
-// src/services/mongoAPI.js
-const BASE_URL = "http://localhost:5002/api/mongo"; // Mongo lives on port 5002
+// src/api/mongoAPI.js
+// Simple client for the three MongoDB functions.
+// Adjust BASE if your dev origin or port differs.
 
-async function fetchData(endpoint) {
-  const url = endpoint.startsWith("/") ? `${BASE_URL}${endpoint}` : `${BASE_URL}/${endpoint}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Request failed: ${res.status} ${res.statusText}`);
+const BASE = "http://localhost:5002/api/mongo";
+
+async function handle(res) {
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}${text ? ` – ${text}` : ""}`);
+  }
   return res.json();
 }
 
-// Canonical KPI from mongoRoutes (four analytics collections)
-export const fetchMongoSummary     = () => fetchData("/summary");
-
-// Time series / rides analytics (rideRoutes mounted under /rides)
-export const fetchBookingStatus    = () => fetchData("/rides/booking-status");
-export const fetchWeeklyTrends     = () => fetchData("/rides/weekly-trends");
-export const fetchRidesTrend       = () => fetchData("/rides/rides-trend");
-export const fetchVehicleBookings  = () => fetchData("/rides/vehicle-bookings");
-export const fetchVehicleCompletion= () => fetchData("/rides/vehicle-completion");
-export const fetchVehicleRevenue   = () => fetchData("/rides/vehicle-revenue");
-export const fetchVehicleRatings   = () => fetchData("/rides/vehicle-ratings");
-export const fetchVehicleReliability = () => fetchData("/rides/vehicle-reliability");
-export const fetchVehicleVTAT      = () => fetchData("/rides/vehicle-vtat");
-export const fetchVehicleCTAT      = () => fetchData("/rides/vehicle-ctat");
-// --- Time buckets ---
-export const fetchTimeHeatmap       = () => fetchData("/time/heatmap");
-export const fetchHourlyTimeSeries  = () => fetchData("/time/hourly");
-
-// --- Locations ---
-export const fetchTopLocations      = () => fetchData("/locations/top");
-export const fetchProblemZones      = () => fetchData("/locations/problem-zones");
-
-// --- Fleet / Vehicles ---
-export const fetchVehicleMetrics    = () => fetchData("/vehicles/metrics");
-
-// --- Customers ---
-export const fetchTopCustomers      = () => fetchData("/customers/top");
-
-// Booking model–based operational summary (bookingRoutes mounted under /bookings)
-export const fetchBookingsSummary  = () => fetchData("/bookings/summary");
-
-export async function fetchVehicleDashboardData() {
-  const [bookings, completion, revenue, ratings, reliability, vtat, ctat] =
-    await Promise.all([
-      fetchVehicleBookings(),
-      fetchVehicleCompletion(),
-      fetchVehicleRevenue(),
-      fetchVehicleRatings(),
-      fetchVehicleReliability(),
-      fetchVehicleVTAT(),
-      fetchVehicleCTAT(),
-    ]);
-
-  return { bookings, completion, revenue, ratings, reliability, vtat, ctat };
+// 1) Trip Replay
+export async function getTripReplay(bookingId) {
+  if (!bookingId) throw new Error("bookingId is required");
+  const res = await fetch(`${BASE}/trips/${encodeURIComponent(bookingId)}/replay`);
+  return handle(res);
 }
 
+// 2) Dynamic Ride Recommendation (profile fetch)
+export async function getCustomerProfile(customerId) {
+  if (!customerId) throw new Error("customerId is required");
+  const res = await fetch(`${BASE}/customers/${encodeURIComponent(customerId)}/profile`);
+  return handle(res);
+}
+
+// 3) Promotions & Experiments
+export async function getCustomerSnapshot(customerId) {
+  if (!customerId) throw new Error("customerId is required");
+  const res = await fetch(`${BASE}/customers/${encodeURIComponent(customerId)}/snapshot`);
+  return handle(res);
+}
+
+export async function postDecision({ customerId, vehicleType, hour, dayOfWeek }) {
+  const res = await fetch(`${BASE}/decide`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ customerId, vehicleType, hour, dayOfWeek })
+  });
+  return handle(res);
+}
+
+// Optional: health check (useful during development)
+export async function getMongoHealth() {
+  const res = await fetch(`${BASE}/health`);
+  return handle(res);
+}
