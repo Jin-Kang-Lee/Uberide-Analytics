@@ -12,24 +12,18 @@ function fmtTime(input) {
   const d = new Date(input);
   return isNaN(d) ? String(input) : d.toLocaleString();
 }
-const emptyToNull = (v) => (v === "" ? null : v);
 
 export default function TripReplay() {
   const [bookingId, setBookingId] = useState("");
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const [log, setLog] = useState([]); // change stream logs
 
-  // ------- Edit modal -------
-  const [showEdit, setShowEdit] = useState(false);
-  const [editData, setEditData] = useState({});
-
-  // ------- Create modal (Option 1: insert into bookings_clean) -------
+  // ------- Create modal -------
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({
-    Date: "",                         // ISO date (YYYY-MM-DD or full ISO)
-    Time: "",                         // HH:mm:ss
+    Date: "",
+    Time: "",
     "Booking ID": "",
     "Booking Status": "",
     "Customer ID": "",
@@ -49,9 +43,14 @@ export default function TripReplay() {
     "Driver Ratings": "",
     "Customer Rating": "",
     "Payment Method": "",
+    DateTime: "",
     DayOfWeek: "",
     Hour: "",
   });
+
+  // ------- Edit modal (same fields as create; Booking ID & Customer ID are read-only) -------
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState({ ...createForm });
 
   // ---------- CREATE (to bookings_clean) ----------
   const openCreateModal = () => {
@@ -65,10 +64,9 @@ export default function TripReplay() {
 
   const submitCreate = async () => {
     setErr("");
-    // Send as-is (with empty → null), backend will normalize/canonicalize
     const payload = {};
     Object.entries(createForm).forEach(([k, v]) => {
-      const n = (typeof v === "string" ? v.trim() : v);
+      const n = typeof v === "string" ? v.trim() : v;
       payload[k] = n === "" ? null : n;
     });
 
@@ -81,83 +79,113 @@ export default function TripReplay() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
 
-      // The Change Stream will propagate to trips_events and your SSE listener
       setShowCreate(false);
-      // auto-select this booking id for convenience
       if (!bookingId && (json?.booking_id || json?.["Booking ID"])) {
         setBookingId(json.booking_id || json["Booking ID"]);
+        await fetchReplay(json.booking_id || json["Booking ID"]);
       }
     } catch (e) {
       setErr(`Create failed: ${e.message}`);
     }
   };
 
-  // ---------- READ (Replay from trips_events) ----------
-  const fetchReplay = useCallback(async () => {
-    setErr("");
-    setData(null);
-    const id = bookingId.trim();
-    if (!id) {
-      setErr("Enter a Booking ID");
-      return;
-    }
+  // ---------- READ (from bookings_clean) ----------
+  const fetchReplay = useCallback(
+    async (idOverride) => {
+      setErr("");
+      setData(null);
+      const id = (idOverride ?? bookingId).trim();
+      if (!id) {
+        setErr("Enter a Booking ID");
+        return;
+      }
 
-    try {
-      setLoading(true);
-      const res = await fetch(
-        `http://localhost:5002/api/mongo/trips/${encodeURIComponent(id)}/replay`
-      );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-      setData(json);
-    } catch (e) {
-      setErr(`Failed to load replay: ${e.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingId]);
+      try {
+        setLoading(true);
+        const res = await fetch(
+          `http://localhost:5002/api/mongo/bookings/${encodeURIComponent(id)}`
+        );
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+        setData(json);
+      } catch (e) {
+        setErr(`Failed to load booking: ${e.message}`);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [bookingId]
+  );
 
-  // ---------- UPDATE (edit fields on trips_events) ----------
+  // ---------- UPDATE (PUT to bookings_clean; same fields as create; Booking/Customer IDs locked) ----------
   const openEditModal = () => {
     if (!data) return setErr("Load a booking first before editing.");
-    setEditData({
-      ...data,
+    const src = data;
+    setEditForm({
+      Date: src?.Date ?? "",
+      Time: src?.Time ?? "",
+      "Booking ID": src?.["Booking ID"] ?? "",
+      "Booking Status": src?.["Booking Status"] ?? "",
+      "Customer ID": src?.["Customer ID"] ?? "",
+      "Vehicle Type": src?.["Vehicle Type"] ?? "",
+      "Pickup Location": src?.["Pickup Location"] ?? "",
+      "Drop Location": src?.["Drop Location"] ?? "",
+      "Avg VTAT": src?.["Avg VTAT"] ?? "",
+      "Avg CTAT": src?.["Avg CTAT"] ?? "",
+      "Cancelled Rides by Customer": src?.["Cancelled Rides by Customer"] ?? "",
+      "Reason for cancelling by Customer":
+        src?.["Reason for cancelling by Customer"] ?? "",
+      "Cancelled Rides by Driver": src?.["Cancelled Rides by Driver"] ?? "",
+      "Driver Cancellation Reason": src?.["Driver Cancellation Reason"] ?? "",
+      "Incomplete Rides": src?.["Incomplete Rides"] ?? "",
+      "Incomplete Rides Reason": src?.["Incomplete Rides Reason"] ?? "",
+      "Booking Value": src?.["Booking Value"] ?? "",
+      "Ride Distance": src?.["Ride Distance"] ?? "",
+      "Driver Ratings": src?.["Driver Ratings"] ?? "",
+      "Customer Rating": src?.["Customer Rating"] ?? "",
+      "Payment Method": src?.["Payment Method"] ?? "",
+      DateTime: src?.DateTime ?? "",
+      DayOfWeek: src?.DayOfWeek ?? "",
+      Hour: src?.Hour ?? "",
     });
     setShowEdit(true);
   };
 
-  const saveEdits = async () => {
-    const id = (data?.booking_id || bookingId || "").trim();
+  const submitEdit = async () => {
+    const id = (data?.["Booking ID"] || bookingId || "").trim();
     if (!id) return setErr("Enter or load a booking ID to update.");
 
-    // Allow arbitrary updates to the trips_events document
-    const body = { ...editData };
+    const payload = {};
+    Object.entries(editForm).forEach(([k, v]) => {
+      const n = typeof v === "string" ? v.trim() : v;
+      payload[k] = n === "" ? null : n;
+    });
+
     try {
       const res = await fetch(
-        `http://localhost:5002/api/mongo/trips/${encodeURIComponent(id)}`,
+        `http://localhost:5002/api/mongo/bookings/${encodeURIComponent(id)}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify(payload),
         }
       );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-      setData(json);
-      setErr("");
       setShowEdit(false);
+      await fetchReplay(id);
     } catch (e) {
       setErr(`Update failed: ${e.message}`);
     }
   };
 
-  // ---------- DELETE (delete trips_events doc) ----------
+  // ---------- DELETE (delete bookings_clean doc) ----------
   const deleteTrip = async () => {
     const id = bookingId.trim();
     if (!id) return setErr("Enter a booking ID to delete.");
     try {
       const res = await fetch(
-        `http://localhost:5002/api/mongo/trips/${encodeURIComponent(id)}`,
+        `http://localhost:5002/api/mongo/bookings/${encodeURIComponent(id)}`,
         { method: "DELETE" }
       );
       const json = await res.json();
@@ -169,19 +197,17 @@ export default function TripReplay() {
     }
   };
 
-  // ---------- Change Stream Listener (SSE) ----------
+  // ---------- Change Stream Listener (SSE on bookings_clean) ----------
   useEffect(() => {
     const es = new EventSource("http://localhost:5002/api/mongo/trips/stream");
-    es.onmessage = (e) => {
+    es.onmessage = async (e) => {
       try {
         const change = JSON.parse(e.data);
-        setLog((prev) => [change, ...prev.slice(0, 30)]);
-        if (
-          data &&
-          change.fullDocument?.booking_id === data.booking_id
-        ) {
-          // Refresh the replay view with the new fullDocument (trips_events)
-          setData(change.fullDocument);
+        const doc = change?.fullDocument || {};
+        const changedId =
+          doc?._canonical?.booking_id || doc?.["Booking ID"] || "";
+        if (changedId && changedId === bookingId.trim()) {
+          await fetchReplay(changedId);
         }
       } catch {
         /* ignore bad payloads */
@@ -191,18 +217,43 @@ export default function TripReplay() {
       console.warn("⚠️ SSE connection lost, retrying…");
     };
     return () => es.close();
-  }, [data]);
+  }, [bookingId, fetchReplay]);
 
   const onKeyDown = (e) => {
     if (e.key === "Enter") fetchReplay();
   };
 
+  // ---- field list for display in order ----
+  const FIELD_ORDER = [
+    "Date",
+    "Time",
+    "Booking ID",
+    "Booking Status",
+    "Customer ID",
+    "Vehicle Type",
+    "Pickup Location",
+    "Drop Location",
+    "Avg VTAT",
+    "Avg CTAT",
+    "Cancelled Rides by Customer",
+    "Reason for cancelling by Customer",
+    "Cancelled Rides by Driver",
+    "Driver Cancellation Reason",
+    "Incomplete Rides",
+    "Incomplete Rides Reason",
+    "Booking Value",
+    "Ride Distance",
+    "Driver Ratings",
+    "Customer Rating",
+    "Payment Method",
+    "DateTime",
+    "DayOfWeek",
+    "Hour",
+  ];
+
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#0B0E11] text-gray-800 dark:text-gray-200">
-      {/* Sidebar */}
       <Sidebar />
-
-      {/* Main column */}
       <div className="flex-1 flex flex-col">
         <Navbar />
 
@@ -210,11 +261,11 @@ export default function TripReplay() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-semibold text-gray-800 dark:text-yellow-400">
-              Trip Replay (MongoDB · Create → bookings_clean · Live Updates)
+              Trip Replay (MongoDB · Create/Update → bookings_clean)
             </h1>
           </div>
 
-          {/* Input Controls */}
+          {/* Controls */}
           <div className="bg-white dark:bg-[#1A1D21] border border-gray-100 dark:border-gray-700 rounded-xl p-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
               <input
@@ -226,7 +277,7 @@ export default function TripReplay() {
               />
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={fetchReplay}
+                  onClick={() => fetchReplay()}
                   disabled={loading}
                   className={`px-4 py-2 rounded text-white ${
                     loading
@@ -245,6 +296,7 @@ export default function TripReplay() {
                 <button
                   onClick={openEditModal}
                   className="px-4 py-2 rounded text-white bg-yellow-500 hover:bg-yellow-600"
+                  disabled={!data}
                 >
                   Update
                 </button>
@@ -259,78 +311,36 @@ export default function TripReplay() {
             {err && <p className="mt-3 text-sm text-red-500">{err}</p>}
           </div>
 
-          {/* Booking Summary */}
+          {/* Booking Details */}
           <div className="bg-white dark:bg-[#1A1D21] border border-gray-100 dark:border-gray-700 rounded-xl p-4">
             <h2 className="text-xl font-semibold mb-3">Booking</h2>
-            {data ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                <div><span className="font-medium">Booking ID:</span> {data.booking_id ?? "—"}</div>
-                <div><span className="font-medium">Customer ID:</span> {data.customer_id ?? "—"}</div>
-                <div><span className="font-medium">Status:</span> {data.status ?? "—"}</div>
-                <div><span className="font-medium">Customer Rating:</span> {data.customer_rating ?? "—"}</div>
-                <div><span className="font-medium">Created At:</span> {fmtTime(data.createdAt)}</div>
-                <div><span className="font-medium">Last Event At:</span> {fmtTime(data.lastEventAt)}</div>
-              </div>
-            ) : (
+
+            {!data ? (
               <p className="text-gray-500 dark:text-gray-400">
-                Enter a booking ID and click <em>Load</em> to view replay.
+                Enter a booking ID and click <em>Load</em> to view booking details.
               </p>
-            )}
-          </div>
-
-          {/* Events Timeline */}
-          <div className="bg-white dark:bg-[#1A1D21] border border-gray-100 dark:border-gray-700 rounded-xl p-4">
-            <h2 className="text-xl font-semibold mb-3">Events</h2>
-            {!data && <p className="text-gray-500 dark:text-gray-400">No events to display.</p>}
-            {data?.events?.length ? (
-              <ul className="space-y-3">
-                {data.events.map((ev, idx) => (
-                  <li key={idx} className="border border-gray-100 dark:border-gray-700 rounded-lg p-3">
-                    <div className="text-sm">
-                      <b>{fmtTime(ev?.t)}</b>{" "}
-                      <span className="uppercase tracking-wide ml-2">{ev?.type || "Unknown"}</span>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                      {ev?.meta?.["Pickup Location"] && <span><b>Pickup:</b> {ev.meta["Pickup Location"]} </span>}
-                      {ev?.meta?.["Drop Location"] && <span>• <b>Drop:</b> {ev.meta["Drop Location"]} </span>}
-                      {typeof ev?.meta?.["Ride Distance"] === "number" && <span>• <b>Dist:</b> {ev.meta["Ride Distance"]} km </span>}
-                      {ev?.meta?.["Vehicle Type"] && <span>• <b>Vehicle:</b> {ev.meta["Vehicle Type"]}</span>}
-                    </div>
-                    <pre className="text-xs bg-gray-50 dark:bg-[#111318] p-2 rounded mt-2 overflow-x-auto">
-                      {JSON.stringify(ev?.meta ?? {}, null, 2)}
-                    </pre>
-                  </li>
-                ))}
-              </ul>
             ) : (
-              data && <p className="text-gray-500 dark:text-gray-400">No events found for this booking.</p>
-            )}
-          </div>
-
-          {/* Live Change Stream Log */}
-          <div className="bg-white dark:bg-[#1A1D21] border border-gray-100 dark:border-gray-700 rounded-xl p-4">
-            <h2 className="text-xl font-semibold mb-3">Live MongoDB Updates</h2>
-            {log.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400">Listening for MongoDB changes…</p>
-            ) : (
-              <ul className="space-y-2 max-h-64 overflow-y-auto text-sm">
-                {log.map((entry, idx) => (
-                  <li key={idx} className="border border-gray-100 dark:border-gray-700 rounded-lg p-2">
-                    <div className="font-medium text-blue-600 dark:text-yellow-400">
-                      {String(entry.operationType || "").toUpperCase()}
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                  {FIELD_ORDER.map((label) => (
+                    <div key={label}>
+                      <span className="font-medium">{label}:</span>{" "}
+                      {data?.[label] ?? "—"}
                     </div>
-                    <div className="text-xs">
-                      {entry.fullDocument?.booking_id ? `Booking ID: ${entry.fullDocument.booking_id}` : "—"}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                  ))}
+                  {/* Last Updated */}
+                  <div className="col-span-1 sm:col-span-2 lg:col-span-3 mt-2">
+                    <span className="font-medium">Date &amp; Time Last Updated:</span>{" "}
+                    {fmtTime(data?.lastUpdatedAt || data?.updatedAt)}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </main>
       </div>
 
-      {/* ------- Create Modal (fields only; no JSON) ------- */}
+      {/* ------- Create Modal ------- */}
       {showCreate && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
           <div className="bg-[#1A1D21] border border-gray-700 p-6 rounded-xl w-full max-w-5xl text-gray-200">
@@ -359,6 +369,7 @@ export default function TripReplay() {
                 ["Driver Ratings", "float e.g., 3.9"],
                 ["Customer Rating", "float e.g., 4.3"],
                 ["Payment Method", "e.g., Uber Wallet"],
+                ["DateTime", "e.g., 2024-05-19 18:47:16"],
                 ["DayOfWeek", "e.g., Sunday"],
                 ["Hour", "0-23"],
               ].map(([label, ph]) => (
@@ -394,28 +405,35 @@ export default function TripReplay() {
         </div>
       )}
 
-      {/* ------- Edit Modal (trips_events document) ------- */}
+      {/* ------- Edit Modal (same fields; Booking ID & Customer ID disabled) ------- */}
       {showEdit && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-          <div className="bg-[#1A1D21] border border-gray-700 p-6 rounded-xl w-full max-w-2xl text-gray-200">
-            <h2 className="text-xl font-semibold mb-4">Edit Trip (trips_events)</h2>
+          <div className="bg-[#1A1D21] border border-gray-700 p-6 rounded-xl w-full max-w-5xl text-gray-200">
+            <h2 className="text-xl font-semibold mb-4">Update Booking (bookings_clean)</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {["booking_id", "customer_id", "status", "customer_rating", "createdAt", "lastEventAt"].map((k) => (
-                <div key={k} className="flex flex-col">
-                  <label className="text-sm mb-1">{k}</label>
-                  <input
-                    className="border border-gray-600 bg-[#111318] rounded px-2 py-1 text-sm"
-                    value={String(editData[k] ?? "")}
-                    onChange={(e) =>
-                      setEditData((prev) => ({ ...prev, [k]: e.target.value }))
-                    }
-                  />
-                </div>
-              ))}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {Object.entries(editForm).map(([label, value]) => {
+                const isLocked =
+                  label === "Booking ID" || label === "Customer ID";
+                return (
+                  <div className="flex flex-col" key={label}>
+                    <label className="text-sm mb-1">{label}</label>
+                    <input
+                      disabled={isLocked}
+                      className={`border border-gray-600 bg-[#111318] rounded px-2 py-1 text-sm ${
+                        isLocked ? "opacity-70 cursor-not-allowed" : ""
+                      }`}
+                      value={value ?? ""}
+                      onChange={(e) =>
+                        setEditForm((p) => ({ ...p, [label]: e.target.value }))
+                      }
+                    />
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="flex justify-end gap-2 mt-4">
+            <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setShowEdit(false)}
                 className="px-4 py-2 rounded bg-gray-600 hover:bg-gray-700"
@@ -423,7 +441,7 @@ export default function TripReplay() {
                 Cancel
               </button>
               <button
-                onClick={saveEdits}
+                onClick={submitEdit}
                 className="px-4 py-2 rounded bg-green-600 hover:bg-green-700"
               >
                 Save Changes

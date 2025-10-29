@@ -1,4 +1,3 @@
-// backend/routes/mongoRoutes.js
 import express from "express";
 import mongoose from "mongoose";
 
@@ -16,7 +15,6 @@ const truthy = (v) => v !== null && v !== undefined && v !== "";
 // Build a Date from Date + Time fields if present
 const combineDateTime = (dateField, timeField) => {
   if (!truthy(dateField) && !truthy(timeField)) return null;
-  // If Date is already ISO with time, prefer it
   if (truthy(dateField) && String(dateField).includes("T")) {
     const d = new Date(dateField);
     return isNaN(d) ? null : d;
@@ -37,10 +35,13 @@ const TripsEvents = getModel(
       booking_id: String,
       customer_id: String,
       status: String,
+      payment_method: String,
+      booking_value: Number,
+      ride_distance: Number,
+      driver_ratings: Number,
       customer_rating: Number,
-      events: Array,
       createdAt: Date,
-      lastEventAt: Date,
+      lastUpdatedAt: Date,
     },
     { strict: false, collection: "trips_events" }
   )
@@ -49,48 +50,7 @@ const TripsEvents = getModel(
 const CustomerProfiles = getModel(
   "CustomerProfiles",
   new Schema(
-    {
-      _id: String, // customer id
-      counts: {
-        bookings: Number,
-        completed: Number,
-        no_driver_found: Number,
-        incomplete: Number,
-      },
-      sums: {
-        booking_value: Number,
-        ride_distance: Number,
-        driver_ratings: Number,
-        customer_rating: Number,
-        // maintain own counters for averages
-        n_booking_value: Number,
-        n_ride_distance: Number,
-        n_driver_ratings: Number,
-        n_customer_rating: Number,
-      },
-      averages: {
-        booking_value: Number,
-        ride_distance: Number,
-        driver_ratings: Number,
-        customer_rating: Number,
-      },
-      preferences: {
-        most_used_vehicle_type: String,
-        most_used_payment_method: String,
-        top_pickup_locations: Array,
-        top_drop_locations: Array,
-        top_hours: Array,
-        top_days: Array,
-
-        // internal counters to derive "most used"
-        vehicle_counts: Object,
-        payment_counts: Object,
-        pickup_counts: Object,
-        drop_counts: Object,
-        hour_counts: Object,
-        day_counts: Object,
-      },
-    },
+    { _id: String },
     { strict: false, collection: "customer_profiles" }
   )
 );
@@ -100,13 +60,10 @@ const CustomerSnapshots = getModel(
   new Schema({ _id: String }, { strict: false, collection: "customer_snapshots" })
 );
 
-// Raw ingestion layer (Option 1)
+// Raw ingestion layer with timestamps (→ exposes updatedAt we’ll show as “Date & Time Last Updated”)
 const BookingsClean = getModel(
   "BookingsClean",
-  new Schema(
-    {},
-    { strict: false, collection: "bookings_clean" }
-  )
+  new Schema({}, { strict: false, collection: "bookings_clean", timestamps: true })
 );
 
 // ---------------- health ----------------
@@ -118,103 +75,65 @@ router.get("/health", (_req, res) => {
   });
 });
 
-// =================== 1) Trip Replay (READ from trips_events) ======================
-router.get("/trips/:bookingId/replay", async (req, res) => {
+// =================== READ a booking (from bookings_clean) ======================
+router.get("/bookings/:bookingId", async (req, res) => {
   try {
     const bookingId = (req.params.bookingId || "").trim();
     if (!bookingId) return res.status(400).json({ error: "bookingId is required" });
 
-    const doc = await TripsEvents.findOne({ booking_id: bookingId }).lean();
-    if (!doc) {
-      return res.status(404).json({
-        error: `No trip event found for booking_id: ${bookingId}`,
-      });
-    }
+    const doc = await BookingsClean.findOne({ "Booking ID": bookingId }).lean();
+    if (!doc) return res.status(404).json({ error: `No booking found for Booking ID: ${bookingId}` });
 
-    const normalizeDate = (val) => {
-      if (!val) return null;
-      if (val instanceof Date) return val.toISOString();
-      if (val.$date) return val.$date;
-      return val;
+    // Return only the fields you care about, plus lastUpdatedAt
+    const out = {
+      Date: doc?.Date ?? null,
+      Time: doc?.Time ?? null,
+      "Booking ID": doc?.["Booking ID"] ?? null,
+      "Booking Status": doc?.["Booking Status"] ?? null,
+      "Customer ID": doc?.["Customer ID"] ?? null,
+      "Vehicle Type": doc?.["Vehicle Type"] ?? null,
+      "Pickup Location": doc?.["Pickup Location"] ?? null,
+      "Drop Location": doc?.["Drop Location"] ?? null,
+      "Avg VTAT": doc?.["Avg VTAT"] ?? null,
+      "Avg CTAT": doc?.["Avg CTAT"] ?? null,
+      "Cancelled Rides by Customer": doc?.["Cancelled Rides by Customer"] ?? null,
+      "Reason for cancelling by Customer": doc?.["Reason for cancelling by Customer"] ?? null,
+      "Cancelled Rides by Driver": doc?.["Cancelled Rides by Driver"] ?? null,
+      "Driver Cancellation Reason": doc?.["Driver Cancellation Reason"] ?? null,
+      "Incomplete Rides": doc?.["Incomplete Rides"] ?? null,
+      "Incomplete Rides Reason": doc?.["Incomplete Rides Reason"] ?? null,
+      "Booking Value": doc?.["Booking Value"] ?? null,
+      "Ride Distance": doc?.["Ride Distance"] ?? null,
+      "Driver Ratings": doc?.["Driver Ratings"] ?? null,
+      "Customer Rating": doc?.["Customer Rating"] ?? null,
+      "Payment Method": doc?.["Payment Method"] ?? null,
+      DateTime: doc?.DateTime ?? null,
+      DayOfWeek: doc?.DayOfWeek ?? null,
+      Hour: doc?.Hour ?? null,
+      lastUpdatedAt: doc?.updatedAt ?? doc?._updatedAt ?? null,
+      updatedAt: doc?.updatedAt ?? null, // send updatedAt too (same value) for flexibility
     };
 
-    const events = Array.isArray(doc.events)
-      ? doc.events.map((e) => ({
-          type: e?.type || "Unknown",
-          t: normalizeDate(e?.t),
-          meta: e?.meta || {},
-        }))
-      : [];
-
-    res.json({
-      booking_id: doc.booking_id,
-      customer_id: doc.customer_id || null,
-      status: doc.status || "Unknown",
-      customer_rating: doc.customer_rating ?? null,
-      createdAt: normalizeDate(doc.createdAt),
-      lastEventAt: normalizeDate(doc.lastEventAt),
-      events,
-    });
+    res.json(out);
   } catch (err) {
-    console.error("❌ Trip replay fetch failed:", err);
-    res.status(500).json({ error: "Internal server error while fetching trip replay" });
+    console.error("❌ Booking fetch failed:", err);
+    res.status(500).json({ error: "Internal server error while fetching booking" });
   }
 });
 
-// =================== 2) CRUD on trips_events (Update/Delete for admin) ======================
-router.put("/trips/:bookingId", async (req, res) => {
-  try {
-    const bookingId = (req.params.bookingId || "").trim();
-    const update = req.body || {};
-    if (!bookingId) return res.status(400).json({ error: "bookingId is required" });
-
-    const result = await TripsEvents.findOneAndUpdate(
-      { booking_id: bookingId },
-      { $set: update, lastEventAt: new Date() },
-      { new: true }
-    );
-
-    if (!result) return res.status(404).json({ error: "Trip not found for update" });
-    res.json(result);
-  } catch (err) {
-    console.error("❌ Trip update failed:", err);
-    res.status(500).json({ error: "Failed to update trip" });
-  }
-});
-
-router.delete("/trips/:bookingId", async (req, res) => {
-  try {
-    const bookingId = (req.params.bookingId || "").trim();
-    if (!bookingId) return res.status(400).json({ error: "bookingId is required" });
-
-    const result = await TripsEvents.findOneAndDelete({ booking_id: bookingId });
-    if (!result) return res.status(404).json({ error: "Trip not found for deletion" });
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("❌ Trip delete failed:", err);
-    res.status(500).json({ error: "Failed to delete trip" });
-  }
-});
-
-// =================== 3) CREATE/UPDATE/DELETE on bookings_clean (Option 1) ======================
+// =================== UPDATE/DELETE on bookings_clean ======================
 
 // Normalize incoming body (supports either spaced labels or camel_case)
 function normalizeBookingPayload(body = {}) {
-  // Accept both: "Booking ID" or booking_id, etc.
   const get = (...keys) => {
-    for (const k of keys) {
-      if (body[k] !== undefined) return body[k];
-    }
+    for (const k of keys) if (body[k] !== undefined) return body[k];
     return null;
   };
 
   const DateField = get("Date", "date");
   const TimeField = get("Time", "time");
-  const DateTime = combineDateTime(DateField, TimeField);
 
   const out = {
-    // Keep the original, user-facing fields so your existing tools remain compatible
     Date: toStringOrNull(DateField),
     Time: toStringOrNull(TimeField),
     "Booking ID": toStringOrNull(get("Booking ID", "booking_id")),
@@ -236,12 +155,11 @@ function normalizeBookingPayload(body = {}) {
     "Driver Ratings": toNumberOrNull(get("Driver Ratings", "driver_ratings")),
     "Customer Rating": toNumberOrNull(get("Customer Rating", "customer_rating")),
     "Payment Method": toStringOrNull(get("Payment Method", "payment_method")),
+    DateTime: toStringOrNull(get("DateTime", "date_time")),
     DayOfWeek: toStringOrNull(get("DayOfWeek", "dayOfWeek")),
     Hour: toNumberOrNull(get("Hour", "hour")),
-    DateTime: DateTime ? `${DateField ?? ""} ${TimeField ?? ""}`.trim() : null, // keep the human string
   };
 
-  // Also include canonical shadow fields for change-stream processors
   out._canonical = {
     booking_id: out["Booking ID"],
     status: out["Booking Status"],
@@ -289,19 +207,57 @@ router.post("/bookings", async (req, res) => {
   }
 });
 
-// optional raw update/delete on bookings_clean
 router.put("/bookings/:bookingId", async (req, res) => {
   try {
     const bookingId = (req.params.bookingId || "").trim();
     if (!bookingId) return res.status(400).json({ error: "bookingId is required" });
+
     const norm = normalizeBookingPayload(req.body || {});
+    // Do NOT allow changing Booking ID or Customer ID
+    delete norm["Booking ID"];
+    delete norm?._canonical?.booking_id;
+    delete norm["Customer ID"];
+    delete norm?._canonical?.customer_id;
+
     const updated = await BookingsClean.findOneAndUpdate(
       { "Booking ID": bookingId },
-      { $set: norm },
+      { $set: norm, $currentDate: { updatedAt: true } },
       { new: true }
     );
+
     if (!updated) return res.status(404).json({ error: "Booking not found" });
-    res.json({ ok: true, booking_id: bookingId, updated });
+
+    res.json({
+      ok: true,
+      booking_id: bookingId,
+      lastUpdatedAt: updated?.updatedAt ?? null,
+      updated: {
+        Date: updated?.Date ?? null,
+        Time: updated?.Time ?? null,
+        "Booking ID": updated?.["Booking ID"] ?? null,
+        "Booking Status": updated?.["Booking Status"] ?? null,
+        "Customer ID": updated?.["Customer ID"] ?? null,
+        "Vehicle Type": updated?.["Vehicle Type"] ?? null,
+        "Pickup Location": updated?.["Pickup Location"] ?? null,
+        "Drop Location": updated?.["Drop Location"] ?? null,
+        "Avg VTAT": updated?.["Avg VTAT"] ?? null,
+        "Avg CTAT": updated?.["Avg CTAT"] ?? null,
+        "Cancelled Rides by Customer": updated?.["Cancelled Rides by Customer"] ?? null,
+        "Reason for cancelling by Customer": updated?.["Reason for cancelling by Customer"] ?? null,
+        "Cancelled Rides by Driver": updated?.["Cancelled Rides by Driver"] ?? null,
+        "Driver Cancellation Reason": updated?.["Driver Cancellation Reason"] ?? null,
+        "Incomplete Rides": updated?.["Incomplete Rides"] ?? null,
+        "Incomplete Rides Reason": updated?.["Incomplete Rides Reason"] ?? null,
+        "Booking Value": updated?.["Booking Value"] ?? null,
+        "Ride Distance": updated?.["Ride Distance"] ?? null,
+        "Driver Ratings": updated?.["Driver Ratings"] ?? null,
+        "Customer Rating": updated?.["Customer Rating"] ?? null,
+        "Payment Method": updated?.["Payment Method"] ?? null,
+        DateTime: updated?.DateTime ?? null,
+        DayOfWeek: updated?.DayOfWeek ?? null,
+        Hour: updated?.Hour ?? null,
+      },
+    });
   } catch (err) {
     console.error("❌ Booking update failed:", err);
     res.status(500).json({ error: "Failed to update booking in bookings_clean" });
@@ -321,7 +277,7 @@ router.delete("/bookings/:bookingId", async (req, res) => {
   }
 });
 
-// =================== 4) LIVE UPDATES from trips_events (SSE) ======================
+// =================== SSE: LIVE UPDATES from bookings_clean ======================
 router.get("/trips/stream", async (req, res) => {
   try {
     res.setHeader("Content-Type", "text/event-stream");
@@ -329,26 +285,24 @@ router.get("/trips/stream", async (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    const changeStream = TripsEvents.watch([], { fullDocument: "updateLookup" });
+    const changeStream = BookingsClean.watch([], { fullDocument: "updateLookup" });
     changeStream.on("change", (change) => {
       res.write(`data: ${JSON.stringify(change)}\n\n`);
     });
     req.on("close", () => changeStream.close());
   } catch (err) {
-    console.error("❌ Trip stream failed:", err);
+    console.error("❌ Stream failed:", err);
     res.status(500).json({ error: "Failed to stream changes" });
   }
 });
 
-// =================== 5) Profile & Decision APIs (unchanged) ======================
+// =================== Profiles / Snapshots (unchanged) ======================
 router.get("/customers/:id/profile", async (req, res) => {
   try {
     const cid = (req.params.id || "").trim();
     if (!cid) return res.status(400).json({ error: "customer id is required" });
-
     const doc = await CustomerProfiles.findOne({ _id: cid }).lean();
     if (!doc) return res.status(404).json({ error: "Profile not found for given ID" });
-
     res.json(doc);
   } catch (err) {
     console.error("❌ Profile fetch failed:", err);
@@ -360,10 +314,8 @@ router.get("/customers/:id/snapshot", async (req, res) => {
   try {
     const cid = (req.params.id || "").trim();
     if (!cid) return res.status(400).json({ error: "customer id is required" });
-
     const snap = await CustomerSnapshots.findOne({ _id: cid }).lean();
     if (!snap) return res.status(404).json({ error: "Snapshot not found for ID" });
-
     res.json(snap);
   } catch (err) {
     console.error("❌ Snapshot fetch failed:", err);
@@ -380,10 +332,10 @@ router.post("/decide", async (req, res) => {
     if (!snap) return res.status(404).json({ error: "Snapshot not found for ID" });
 
     const rating = Number(snap?.metrics?.avg_customer_rating ?? 0);
-    const weekday = ["Monday","Tuesday","Wednesday","Thursday","Friday"].includes(dayOfWeek || "");
+    const weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(dayOfWeek || "");
     let action = { kind: "none" };
 
-    if (rating >= 4.5 && weekday && Number(hour) >= 6 && Number(hour) < 10 && ["Sedan","Premier"].includes(vehicleType)) {
+    if (rating >= 4.5 && weekday && Number(hour) >= 6 && Number(hour) < 10 && ["Sedan", "Premier"].includes(vehicleType)) {
       action = { kind: "discount", valuePct: 10, rationale: "High rating weekday AM commuter" };
     } else if ((snap?.metrics?.cancels_by_customer ?? 0) >= 2) {
       action = { kind: "discount", valuePct: 5, rationale: "Reduce churn (recent cancels)" };
@@ -396,13 +348,8 @@ router.post("/decide", async (req, res) => {
   }
 });
 
-// =================== 6) Change Stream: bookings_clean → derived updates ======================
-//
-// This watcher runs once (idempotent). It listens for inserts/updates on bookings_clean and
-// incrementally updates trips_events and customer_profiles.
-//
-// Requires a replica set (e.g., on dev: `rs.initiate()`).
-//
+// =================== Change Stream: bookings_clean → derived updates ======================
+// Keep incremental aggregation (no per-event log). We simply upsert the latest view + update profiles.
 let bookingsWatcherStarted = false;
 
 async function startBookingsWatcher() {
@@ -420,28 +367,10 @@ async function startBookingsWatcher() {
         const booking_id = c.booking_id || raw["Booking ID"];
         const customer_id = c.customer_id || raw["Customer ID"];
         const status = c.status || raw["Booking Status"];
-        const dateObj = c.dateObj || (raw.DateTime ? new Date(raw.DateTime) : null);
+        const dateObj = c.dateObj || null;
 
-        // ---- 1) Upsert into trips_events ----
+        // ---- Upsert latest flattened trip view (no events array) ----
         if (booking_id) {
-          const eventType =
-            status?.toUpperCase() === "COMPLETED" ? "COMPLETED"
-            : status?.toUpperCase() === "CANCELLED" ? "CANCELLED"
-            : status?.toUpperCase() === "INCOMPLETE" ? "INCOMPLETE"
-            : "BOOKED";
-
-          // Build a small meta snapshot
-          const meta = {
-            "Pickup Location": c.pickup_location ?? raw["Pickup Location"] ?? null,
-            "Drop Location": c.drop_location ?? raw["Drop Location"] ?? null,
-            "Ride Distance": c.ride_distance ?? raw["Ride Distance"] ?? null,
-            "Vehicle Type": c.vehicle_type ?? raw["Vehicle Type"] ?? null,
-            "Payment Method": c.payment_method ?? raw["Payment Method"] ?? null,
-            "Booking Value": c.booking_value ?? raw["Booking Value"] ?? null,
-            DayOfWeek: c.dayOfWeek ?? raw.DayOfWeek ?? null,
-            Hour: c.hour ?? raw.Hour ?? null,
-          };
-
           await TripsEvents.updateOne(
             { booking_id },
             [
@@ -451,21 +380,13 @@ async function startBookingsWatcher() {
                   booking_id,
                   customer_id: customer_id ?? "$customer_id",
                   status: status ?? "$status",
+                  payment_method: c.payment_method ?? raw["Payment Method"] ?? "$payment_method",
+                  booking_value: c.booking_value ?? raw["Booking Value"] ?? "$booking_value",
+                  ride_distance: c.ride_distance ?? raw["Ride Distance"] ?? "$ride_distance",
+                  driver_ratings: c.driver_ratings ?? raw["Driver Ratings"] ?? "$driver_ratings",
                   customer_rating: c.customer_rating ?? raw["Customer Rating"] ?? "$customer_rating",
                   createdAt: { $ifNull: ["$createdAt", dateObj ?? new Date()] },
-                  lastEventAt: new Date(),
-                  events: {
-                    $let: {
-                      vars: { ev: { type: eventType, t: dateObj ?? new Date(), meta } },
-                      in: {
-                        $cond: [
-                          { $isArray: "$events" },
-                          { $concatArrays: ["$events", ["$$ev"]] },
-                          ["$$ev"],
-                        ],
-                      },
-                    },
-                  },
+                  lastUpdatedAt: new Date(),
                 },
               },
             ],
@@ -473,15 +394,11 @@ async function startBookingsWatcher() {
           );
         }
 
-        // ---- 2) Incrementally update customer_profiles ----
+        // ---- Incrementally update customer_profiles (same as before) ----
         if (customer_id) {
-          const incObj = {
-            "counts.bookings": 1,
-          };
-          if ((status || "").toLowerCase() === "completed") {
-            incObj["counts.completed"] = 1;
-          }
-          // rolling sums + n for averages
+          const incObj = { "counts.bookings": 1 };
+          if ((status || "").toLowerCase() === "completed") incObj["counts.completed"] = 1;
+
           if (truthy(c.booking_value ?? raw["Booking Value"])) {
             incObj["sums.booking_value"] = Number(c.booking_value ?? raw["Booking Value"]);
             incObj["sums.n_booking_value"] = 1;
@@ -530,10 +447,8 @@ async function startBookingsWatcher() {
             },
           };
 
-          // First stage: $inc + setOnInsert + bump counters
           const update = { $inc, $setOnInsert };
 
-          // Increment preference counters dynamically
           if (vehicle) update.$inc[`preferences.vehicle_counts.${vehicle}`] = 1;
           if (payment) update.$inc[`preferences.payment_counts.${payment}`] = 1;
           if (pickup) update.$inc[`preferences.pickup_counts.${pickup}`] = 1;
@@ -541,10 +456,8 @@ async function startBookingsWatcher() {
           if (hour !== null && hour !== undefined) update.$inc[`preferences.hour_counts.${hour}`] = 1;
           if (day) update.$inc[`preferences.day_counts.${day}`] = 1;
 
-          // Apply the $inc update
           await CustomerProfiles.updateOne({ _id: customer_id }, update, { upsert: true });
 
-          // Second stage: recompute averages + top preferences using pipeline update
           await CustomerProfiles.updateOne(
             { _id: customer_id },
             [
@@ -580,31 +493,24 @@ async function startBookingsWatcher() {
                   },
                 },
               },
-              // Derive "most used" and top arrays from *_counts (convert object → array, sort, slice)
               {
                 $set: {
                   "preferences.most_used_vehicle_type": {
                     $let: {
-                      vars: {
-                        arr: { $objectToArray: "$preferences.vehicle_counts" }
-                      },
-                      in: {
-                        $getField: {
-                          field: "k",
-                          input: { $first: { $slice: [{ $sortArray: { input: "$$arr", sortBy: { v: -1 } } }, 1] } }
-                        }
-                      }
+                      vars: { arr: { $objectToArray: "$preferences.vehicle_counts" } },
+                      in: { $getField: {
+                        field: "k",
+                        input: { $first: { $slice: [{ $sortArray: { input: "$$arr", sortBy: { v: -1 } } }, 1] } }
+                      } }
                     }
                   },
                   "preferences.most_used_payment_method": {
                     $let: {
                       vars: { arr: { $objectToArray: "$preferences.payment_counts" } },
-                      in: {
-                        $getField: {
-                          field: "k",
-                          input: { $first: { $slice: [{ $sortArray: { input: "$$arr", sortBy: { v: -1 } } }, 1] } }
-                        }
-                      }
+                      in: { $getField: {
+                        field: "k",
+                        input: { $first: { $slice: [{ $sortArray: { input: "$$arr", sortBy: { v: -1 } } }, 1] } }
+                      } }
                     }
                   },
                   "preferences.top_pickup_locations": {
