@@ -205,15 +205,26 @@ const presentBookingDoc = (raw = {}) => {
 
 /* ------------------------------ CRUD: bookings ----------------------------- */
 // Create
+// Create
 router.post("/bookings", async (req, res) => {
   try {
     const norm = normalizeBookingPayload(req.body || {});
     if (!norm._canonical.booking_id) {
       return res.status(400).json({ error: "Booking ID is required" });
     }
+
+    // 👇 Duplicate prevention
+    const exists = await BookingsClean.findOne({ "Booking ID": norm._canonical.booking_id });
+    if (exists) {
+      return res.status(409).json({
+        error: `Booking ID "${norm._canonical.booking_id}" already exists — please use another one.`,
+      });
+    }
+
     const now = new Date();
     const doc = { ...norm, createdAt: now, updatedAt: now };
     const created = await BookingsClean.create(doc);
+
     res.json({
       ok: true,
       booking_id: norm._canonical.booking_id,
@@ -225,6 +236,7 @@ router.post("/bookings", async (req, res) => {
     res.status(500).json({ error: "Failed to create booking in bookings_clean" });
   }
 });
+
 
 // Read single booking (used by TripReplay)
 router.get("/bookings/:bookingId", async (req, res) => {
