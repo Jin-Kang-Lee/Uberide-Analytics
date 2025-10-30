@@ -173,19 +173,23 @@ export default function ManageBookings() {
     }
   };
 
-  // ---------- modal: fetch dropdowns once ----------
+    // ---------- 🆕 release lock automatically on refresh/close ----------
   useEffect(() => {
-    const loadDropdowns = async () => {
-      try {
-        const [v, l] = await Promise.all([fetchVehicleTypes(), fetchLocations()]);
-        setVehicleTypes(v || []);
-        setLocations(l || []);
-      } catch (e) {
-        console.error("Dropdown fetch failed", e);
+    const handleUnload = async () => {
+      if (editingId) {
+        try {
+          const actor = (actorName || "").trim();
+          if (actor) await unlockBooking(editingId, actor);
+        } catch (e) {
+          console.warn("Unlock on unload failed:", e);
+        }
       }
     };
-    loadDropdowns();
-  }, []);
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, [editingId, actorName]);
+
+  
 
   // ---------- modal: verify customer ----------
   const onVerifyCustomer = async () => {
@@ -440,22 +444,33 @@ export default function ManageBookings() {
                             <td className="p-2">{b.ride_distance}</td>
                             <td className="p-2">{b.payment_method}</td>
                             <td className="p-2 flex gap-3">
-                              <button
-                                onClick={() => handleEdit(b)}
-                                className="text-yellow-500 hover:text-yellow-600"
-                                title="Edit"
-                                disabled={lockedBySomeoneElse}
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={() => handleDelete(b.booking_id)}
-                                className="text-red-500 hover:text-red-600"
-                                title="Delete"
-                                disabled={lockedBySomeoneElse}
-                              >
-                                🗑
-                              </button>
+                              {/* Edit Button */}
+                                <button
+                                  onClick={() => {
+                                    // prevent starting a new edit while another is active
+                                    if (editingId && editingId !== b.booking_id) {
+                                      alert("Finish your current edit before editing another booking.");
+                                      return;
+                                    }
+                                    handleEdit(b);
+                                  }}
+                                  className="text-yellow-500 hover:text-yellow-600"
+                                  title="Edit"
+                                  disabled={lockedBySomeoneElse}
+                                >
+                                  ✏️
+                                </button>
+
+                                {/* Delete Button */}
+                                <button
+                                  onClick={() => handleDelete(b.booking_id)}
+                                  className="text-red-500 hover:text-red-600"
+                                  title="Delete"
+                                  disabled={lockedBySomeoneElse}
+                                >
+                                  🗑
+                                </button>
+
                             </td>
                           </>
                         )}

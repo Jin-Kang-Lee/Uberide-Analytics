@@ -54,3 +54,13 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Ignore dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Ignore build and cache folders
+dist/
+build/
+.env
