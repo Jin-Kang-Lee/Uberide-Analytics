@@ -100,6 +100,14 @@ export async function deleteBooking(id) {
 }
 
 
+  export const lockBooking = (id, actor) =>
+  api.post(`/bookings/${encodeURIComponent(id)}/lock`, { actor })
+     .then(r => r.data);
+
+export const unlockBooking = (id, actor) =>
+  api.post(`/bookings/${encodeURIComponent(id)}/unlock`, { actor })
+     .then(r => r.data);
+
 // 👥 9️⃣ CUSTOMER INSIGHTS SECTION ----------------------------
 
 // 9.1️⃣ Customer Summary (KPI Cards)

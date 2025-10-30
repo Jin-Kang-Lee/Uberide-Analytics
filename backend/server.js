@@ -22,7 +22,7 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: Number(process.env.DB_PORT) || 3306,
+  port: Number(process.env.DB_PORT) || 3307,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -151,7 +151,7 @@ app.get("/api/bookings", async (req, res) => {
         booking_id, customer_id, vehicle_type_id,
         pickup_location_id, drop_location_id,
         status, booking_value, ride_distance,
-        payment_method, currency, booking_ts
+        payment_method, currency, booking_ts,locked_by, locked_at
       FROM booking
       ${where}
       ORDER BY booking_ts DESC
@@ -575,6 +575,96 @@ app.post("/api/bookings", async (req, res) => {
 });
 
 
+// ====== Simple row lock with TTL ======
+const LOCK_TTL_SECONDS = 180; // 3 minutes
+
+// helper to check if a row is currently lockable
+async function tryAcquireLock(bookingId, actor) {
+  // expire old locks inline
+  const [res] = await pool.query(
+    `
+    UPDATE booking
+       SET locked_by = ?, locked_at = NOW()
+     WHERE booking_id = ?
+       AND (
+             locked_by IS NULL
+          OR locked_at IS NULL
+          OR TIMESTAMPDIFF(SECOND, locked_at, NOW()) > ?
+           )
+    `,
+    [actor, bookingId, LOCK_TTL_SECONDS]
+  );
+  return res.affectedRows === 1;
+}
+
+// POST /api/bookings/:id/lock { actor }
+app.post("/api/bookings/:id/lock", async (req, res) => {
+  try {
+    const bookingId = (req.params.id || "").trim();
+    const actor = (req.body?.actor || "").trim() || "unknown";
+
+    if (!bookingId) return res.status(400).json({ ok: false, error: "Missing booking id" });
+
+    const acquired = await tryAcquireLock(bookingId, actor);
+    if (acquired) {
+      return res.json({ ok: true, locked_by: actor, ttl_seconds: LOCK_TTL_SECONDS });
+    }
+
+    // Someone else holds a non-expired lock — tell the UI who
+    const [rows] = await pool.query(
+      `
+      SELECT locked_by,
+             TIMESTAMPDIFF(SECOND, locked_at, NOW()) AS age_sec
+        FROM booking
+       WHERE booking_id = ?
+      `,
+      [bookingId]
+    );
+    const holder = rows?.[0]?.locked_by || "someone else";
+    return res.json({ ok: false, locked_by: holder });
+  } catch (e) {
+    console.error("LOCK error:", e);
+    res.status(500).json({ ok: false, error: "Lock failed" });
+  }
+});
+
+// POST /api/bookings/:id/unlock { actor }
+app.post("/api/bookings/:id/unlock", async (req, res) => {
+  try {
+    const bookingId = (req.params.id || "").trim();
+    const actor = (req.body?.actor || "").trim() || "unknown";
+    if (!bookingId) return res.status(400).json({ ok: false, error: "Missing booking id" });
+
+    // Only the same actor (or expired) can clear the lock
+    const [res1] = await pool.query(
+      `
+      UPDATE booking
+         SET locked_by = NULL, locked_at = NULL
+       WHERE booking_id = ?
+         AND (
+               locked_by = ?
+            OR locked_by IS NULL
+            OR locked_at IS NULL
+            OR TIMESTAMPDIFF(SECOND, locked_at, NOW()) > ?
+             )
+      `,
+      [bookingId, actor, LOCK_TTL_SECONDS]
+    );
+
+    return res.json({ ok: res1.affectedRows > 0 });
+  } catch (e) {
+    console.error("UNLOCK error:", e);
+    res.status(500).json({ ok: false, error: "Unlock failed" });
+  }
+});
+
+
+
+
+
+
+
+
 // PUT /api/bookings/:booking_id
 app.put("/api/bookings/:booking_id", async (req, res) => {
   try {
@@ -648,7 +738,7 @@ app.delete("/api/bookings/:booking_id", async (req, res) => {
 // 9.1️⃣ Customer Summary
 app.get("/api/customer-summary", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT
         COUNT(DISTINCT c.customer_id) AS total_customers,
         ROUND(AVG(r.customer_rating), 2) AS avg_customer_rating,
@@ -681,7 +771,7 @@ app.get("/api/customer-summary", async (req, res) => {
 // 9.2️⃣ Top 10 Customers by Total Spend
 app.get("/api/top-customers", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         c.customer_id,
         COUNT(b.booking_id) AS total_rides,
@@ -705,7 +795,7 @@ app.get("/api/top-customers", async (req, res) => {
 // 9.3️⃣ Customer Ride Frequency
 app.get("/api/customer-frequency", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         ride_count AS ride_bracket,
         COUNT(*) AS num_customers
@@ -731,7 +821,7 @@ app.get("/api/customer-frequency", async (req, res) => {
 // 9.4️⃣ Monthly Customer Growth (fixed version)
 app.get("/api/customer-growth", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         DATE_FORMAT(first_ride, '%Y-%m') AS first_ride_month,
         COUNT(*) AS new_customers
@@ -755,7 +845,7 @@ app.get("/api/customer-growth", async (req, res) => {
 // 9.5️⃣ Ratings vs Spending (Correlation)
 app.get("/api/customer-ratings-spending", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         c.customer_id,
         ROUND(AVG(r.customer_rating), 2) AS avg_rating,
@@ -782,7 +872,7 @@ app.get("/api/customer-active-status", async (req, res) => {
   try {
     const THRESHOLD_DAYS = 365; // 🟢 explicitly define threshold
 
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       WITH customer_last AS (
         SELECT 
           c.customer_id,
@@ -825,7 +915,7 @@ app.get("/api/customer-active-status", async (req, res) => {
 // -----------------------------------------------------------
 app.get("/api/ride-type-popularity", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         v.name AS ride_type,
         COUNT(b.booking_id) AS rides
@@ -846,7 +936,7 @@ app.get("/api/ride-type-popularity", async (req, res) => {
 // -----------------------------------------------------------
 app.get("/api/peak-booking-hours", async (req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT 
         HOUR(b.booking_ts) AS hour,
         COUNT(*) AS ride_count

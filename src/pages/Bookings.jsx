@@ -10,12 +10,22 @@ import {
   validateCustomer,
   fetchVehicleTypes,
   fetchLocations,
+  lockBooking,
+  unlockBooking,
 } from "../services/api";
 
-const STATUS_OPTIONS = ["Pending", "Completed", "Cancelled"];
-const PAYMENT_OPTIONS = ["Cash", "Card", "UPI", "Wallet"];
+const BASE_STATUS_OPTIONS = ["Pending", "Completed", "Cancelled"];
+const PAYMENT_OPTIONS = ["Cash", "Card", "UPI", "Uber Wallet"];
 
 export default function ManageBookings() {
+  // ---------- actor (used for locking) ----------
+  const [actorName, setActorName] = useState(
+    () => localStorage.getItem("actorName") || ""
+  );
+  useEffect(() => {
+    if (actorName?.trim()) localStorage.setItem("actorName", actorName.trim());
+  }, [actorName]);
+
   // ---------- table state ----------
   const [bookings, setBookings] = useState([]);
   const [search, setSearch] = useState("");
@@ -50,6 +60,12 @@ export default function ManageBookings() {
     currency: "INR",
   });
 
+  // ---------- derive status options (include values from rows, e.g., "Incomplete") ----------
+  const STATUS_OPTIONS = useMemo(() => {
+    const fromRows = bookings.map(b => b.status).filter(Boolean);
+    return Array.from(new Set([...BASE_STATUS_OPTIONS, ...fromRows]));
+  }, [bookings]);
+
   // ---------- table data ----------
   useEffect(() => {
     loadBookings();
@@ -60,6 +76,7 @@ export default function ManageBookings() {
     try {
       const offset = (page - 1) * limit;
       const res = await fetchBookingsPaged({ limit, offset, search });
+      // expect each row to include locked_by (nullable) and locked_at (optional)
       setBookings(res.data || []);
       setTotal(res.total || 0);
     } catch (e) {
@@ -71,30 +88,80 @@ export default function ManageBookings() {
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  // ---------- inline edit ----------
-  const handleEdit = (b) => {
-    setEditingId(b.booking_id);
-    setEditForm({
-      status: b.status,
-      booking_value: b.booking_value,
-      ride_distance: b.ride_distance,
-      payment_method: b.payment_method,
-    });
+  // ---------- inline edit with locking ----------
+  const handleEdit = async (b) => {
+    // name is required for locking — keep it lightweight
+    const actor = (actorName || "").trim();
+    if (!actor) {
+      alert("Enter your name (top-right) before editing so others can see who is editing.");
+      return;
+    }
+    try {
+      // ask server to acquire the lock
+      const resp = await lockBooking(b.booking_id, actor);
+      if (!resp?.ok) {
+        // someone else is already editing; backend should return locked_by
+        const who = resp?.locked_by || "someone else";
+        alert(`This row is currently being edited by ${who}. Try again later.`);
+        // refresh to show chip
+        await loadBookings();
+        return;
+      }
+      // got the lock — go into edit mode
+      setEditingId(b.booking_id);
+      setEditForm({
+        status: b.status,
+        booking_value: b.booking_value,
+        ride_distance: b.ride_distance,
+        payment_method: b.payment_method,
+      });
+      // reflect lock in the UI immediately
+      setBookings(prev =>
+        prev.map(x =>
+          x.booking_id === b.booking_id ? { ...x, locked_by: actor } : x
+        )
+      );
+    } catch (e) {
+      console.error("Lock failed:", e);
+      alert("Could not acquire lock. Please try again.");
+    }
   };
+
   const onEditChange = (e) => {
     const { name, value } = e.target;
     setEditForm((p) => ({ ...p, [name]: value }));
   };
+
+  const releaseLock = async (id) => {
+    try {
+      const actor = (actorName || "").trim();
+      if (!actor) return;
+      await unlockBooking(id, actor);
+    } catch (e) {
+      // non-fatal; just log
+      console.warn("Unlock failed (non-fatal):", e);
+    } finally {
+      // refresh row states
+      loadBookings();
+    }
+  };
+
   const handleSave = async (id) => {
     try {
       await updateBooking(id, editForm);
       setEditingId(null);
-      await loadBookings();
+      await releaseLock(id);
     } catch (err) {
       console.error("Update failed:", err);
       alert("Update failed.");
     }
   };
+
+  const handleCancel = async (id) => {
+    setEditingId(null);
+    await releaseLock(id);
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm(`Delete booking ${id}?`)) return;
     try {
@@ -226,10 +293,20 @@ export default function ManageBookings() {
         <Navbar />
 
         <main className="p-6 overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-3">
             <h2 className="text-2xl font-semibold text-gray-800 dark:text-yellow-400">
               📋 Manage Bookings
             </h2>
+
+            {/* your name for lock display */}
+            <input
+              value={actorName}
+              onChange={(e) => setActorName(e.target.value)}
+              placeholder="Your name (shows in locks)"
+              className="px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#0B0E11] border border-gray-300 dark:border-gray-700"
+              style={{ minWidth: 220 }}
+            />
+
             <button
               onClick={() => setShowModal(true)}
               className="px-4 py-2 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white"
@@ -271,96 +348,120 @@ export default function ManageBookings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {bookings.map((b) => (
-                    <tr key={b.booking_id} className="border-b hover:bg-gray-50 dark:hover:bg-[#222531]">
-                      <td className="p-2">{b.booking_id}</td>
-                      <td className="p-2">{b.customer_id}</td>
+                  {bookings.map((b) => {
+                    const lockedBy = b.locked_by || "";
+                    const lockedBySomeoneElse =
+                      lockedBy && lockedBy !== (actorName || "").trim();
 
-                      {editingId === b.booking_id ? (
-                        <>
-                          <td className="p-2">
-                            <select
-                              name="status"
-                              value={editForm.status}
-                              onChange={onEditChange}
-                              className="border rounded px-2 py-1"
-                            >
-                              {STATUS_OPTIONS.map((s) => (
-                                <option key={s}>{s}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="p-2">
-                            <input
-                              name="booking_value"
-                              type="number"
-                              value={editForm.booking_value}
-                              onChange={onEditChange}
-                              className="border rounded px-2 py-1 w-24"
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              name="ride_distance"
-                              type="number"
-                              value={editForm.ride_distance}
-                              onChange={onEditChange}
-                              className="border rounded px-2 py-1 w-24"
-                            />
-                          </td>
-                          <td className="p-2">
-                            <select
-                              name="payment_method"
-                              value={editForm.payment_method}
-                              onChange={onEditChange}
-                              className="border rounded px-2 py-1"
-                            >
-                              {PAYMENT_OPTIONS.map((p) => (
-                                <option key={p}>{p}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="p-2 flex gap-2">
-                            <button
-                              onClick={() => handleSave(b.booking_id)}
-                              className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-xl"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="px-3 py-1 border rounded-xl"
-                            >
-                              Cancel
-                            </button>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="p-2">{b.status}</td>
-                          <td className="p-2">{b.booking_value}</td>
-                          <td className="p-2">{b.ride_distance}</td>
-                          <td className="p-2">{b.payment_method}</td>
-                          <td className="p-2 flex gap-3">
-                            <button
-                              onClick={() => handleEdit(b)}
-                              className="text-yellow-500 hover:text-yellow-600"
-                              title="Edit"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => handleDelete(b.booking_id)}
-                              className="text-red-500 hover:text-red-600"
-                              title="Delete"
-                            >
-                              🗑
-                            </button>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  ))}
+                    return (
+                      <tr key={b.booking_id} className="border-b hover:bg-gray-50 dark:hover:bg-[#222531]">
+                        <td className="p-2">
+                          <div className="flex items-center gap-3">
+                            <span>{b.booking_id}</span>
+                            {lockedBy && (
+                              <span
+                                className={`text-xs px-3 py-1 rounded-full border ${
+                                  lockedBySomeoneElse
+                                    ? "border-amber-400 text-amber-700 bg-amber-50"
+                                    : "border-emerald-400 text-emerald-700 bg-emerald-50"
+                                }`}
+                              >
+                                editing by: <em>{lockedBy}</em>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-2">{b.customer_id}</td>
+
+                        {editingId === b.booking_id ? (
+                          <>
+                            <td className="p-2">
+                              <select
+                                name="status"
+                                value={editForm.status}
+                                onChange={onEditChange}
+                                className="border rounded px-2 py-1"
+                              >
+                                {STATUS_OPTIONS.map((s) => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="p-2">
+                              <input
+                                name="booking_value"
+                                type="number"
+                                value={editForm.booking_value}
+                                onChange={onEditChange}
+                                className="border rounded px-2 py-1 w-24"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                name="ride_distance"
+                                type="number"
+                                value={editForm.ride_distance}
+                                onChange={onEditChange}
+                                className="border rounded px-2 py-1 w-24"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <select
+                                name="payment_method"
+                                value={editForm.payment_method ?? b.payment_method ?? ""}
+                                onChange={onEditChange}
+                                className="border rounded px-2 py-1"
+                              >
+                                <option value="">Select method…</option>
+                                {PAYMENT_OPTIONS.map((p) => (
+                                  <option key={p} value={p}>{p}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="p-2 flex gap-2">
+                              <button
+                                onClick={() => handleSave(b.booking_id)}
+                                className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-xl"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={() => handleCancel(b.booking_id)}
+                                className="px-3 py-1 border rounded-xl"
+                              >
+                                Cancel
+                              </button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="p-2">{b.status}</td>
+                            <td className="p-2">{b.booking_value}</td>
+                            <td className="p-2">{b.ride_distance}</td>
+                            <td className="p-2">{b.payment_method}</td>
+                            <td className="p-2 flex gap-3">
+                              <button
+                                onClick={() => handleEdit(b)}
+                                className="text-yellow-500 hover:text-yellow-600"
+                                title="Edit"
+                                disabled={lockedBySomeoneElse}
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => handleDelete(b.booking_id)}
+                                className="text-red-500 hover:text-red-600"
+                                title="Delete"
+                                disabled={lockedBySomeoneElse}
+                              >
+                                🗑
+                              </button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -529,9 +630,7 @@ export default function ManageBookings() {
                     className="w-full rounded-xl bg-gray-50 dark:bg-[#0B0E11] border border-gray-300 dark:border-gray-700 p-2"
                   >
                     {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
+                      <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                 </div>
@@ -577,9 +676,7 @@ export default function ManageBookings() {
                   >
                     <option value="">Select method…</option>
                     {PAYMENT_OPTIONS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
+                      <option key={p} value={p}>{p}</option>
                     ))}
                   </select>
                 </div>
