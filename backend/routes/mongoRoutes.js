@@ -1,4 +1,3 @@
-// backend/routes/mongoRoutes.js
 import express from "express";
 import mongoose from "mongoose";
 
@@ -14,21 +13,6 @@ const toNumberOrNull = (v) =>
 const toStringOrNull = (v) =>
   v === null || v === undefined || v === "" ? null : String(v);
 const truthy = (v) => v !== null && v !== undefined && v !== "";
-
-// Build a Date from Date + Time fields if present
-const combineDateTime = (dateField, timeField) => {
-  if (!truthy(dateField) && !truthy(timeField)) return null;
-  // If Date already includes time portion, prefer it
-  if (truthy(dateField) && String(dateField).includes("T")) {
-    const d = new Date(dateField);
-    return isNaN(d) ? null : d;
-  }
-  const dPart = truthy(dateField) ? String(dateField).split("T")[0] : "1970-01-01";
-  const tPart = truthy(timeField) ? String(timeField) : "00:00:00";
-  const iso = `${dPart}T${tPart}.000Z`;
-  const d = new Date(iso);
-  return isNaN(d) ? null : d;
-};
 
 /* --------------------------------- models -------------------------------- */
 const BookingsClean = getModel(
@@ -97,6 +81,7 @@ router.get("/health", (_req, res) => {
     collections: ["bookings_clean", "customer_profiles", "customer_snapshots"],
   });
 });
+
 
 /* -------------------------- normalization (payload) ------------------------ */
 // Accept both human labels and camel/snake keys.
@@ -205,7 +190,6 @@ const presentBookingDoc = (raw = {}) => {
 
 /* ------------------------------ CRUD: bookings ----------------------------- */
 // Create
-// Create
 router.post("/bookings", async (req, res) => {
   try {
     const norm = normalizeBookingPayload(req.body || {});
@@ -237,8 +221,49 @@ router.post("/bookings", async (req, res) => {
   }
 });
 
+/* --------------------------- BOOKINGS OVERVIEW --------------------------- */
+router.get("/bookings/overview", async (_req, res) => {
+  try {
+    const getModel = (name, collection) =>
+      mongoose.models[name] ||
+      mongoose.model(name, new mongoose.Schema({}, { strict: false }), collection);
 
-// Read single booking (used by TripReplay)
+    const BookingsClean = getModel("BookingsClean", "bookings_clean");
+
+    const result = await BookingsClean.aggregate([
+      {
+        $group: {
+          _id: null,
+          total_bookings: { $sum: 1 },
+          avg_vtat: { $avg: { $ifNull: ["$Avg VTAT", 0] } },
+          avg_ctat: { $avg: { $ifNull: ["$Avg CTAT", 0] } },
+          avg_customer_rating: { $avg: { $ifNull: ["$Customer Rating", 0] } },
+          cancelled: {
+            $sum: {
+              $cond: [{ $eq: ["$Booking Status", "Cancelled"] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    res.json(result[0] || {
+      total_bookings: 0,
+      avg_vtat: 0,
+      avg_ctat: 0,
+      avg_customer_rating: 0,
+      cancelled: 0,
+    });
+  } catch (err) {
+    console.error("❌ Overview query failed:", err);
+    res.status(500).json({ error: "Failed to fetch overview" });
+  }
+});
+
+
+
+/* ------------------------------ CRUD: bookings ----------------------------- */
+// Read single booking
 router.get("/bookings/:bookingId", async (req, res) => {
   try {
     const bookingId = (req.params.bookingId || "").trim();
@@ -247,87 +272,260 @@ router.get("/bookings/:bookingId", async (req, res) => {
     const doc = await BookingsClean.findOne({ "Booking ID": bookingId }).lean();
     if (!doc) return res.status(404).json({ error: "No booking found" });
 
-    res.json(presentBookingDoc(doc));
+    res.json(doc);
   } catch (err) {
     console.error("❌ Booking fetch failed:", err);
     res.status(500).json({ error: "Internal server error while fetching booking" });
   }
 });
 
-// Update booking (Booking ID & Customer ID are immutable)
+/* ---------------------- CREATE BOOKING ---------------------- */
+router.post("/bookings", async (req, res) => {
+  try {
+    const BookingsClean =
+      mongoose.models.BookingsClean ||
+      mongoose.model("BookingsClean", new mongoose.Schema({}, { strict: false }), "bookings_clean");
+
+    const payload = req.body || {};
+    const bookingId = (payload["Booking ID"] || "").trim();
+
+    // Check if Booking ID is provided
+    if (!bookingId) {
+      return res.status(400).json({ error: "Booking ID is required" });
+    }
+
+    // Check for duplicate Booking ID
+    const existing = await BookingsClean.findOne({ "Booking ID": bookingId }).lean();
+    if (existing) {
+      return res.status(409).json({ error: "Booking ID already exists" });
+    }
+
+    // Create new document
+    const doc = await BookingsClean.create(payload);
+    res.json(doc);
+  } catch (err) {
+    console.error("❌ Booking create failed:", err);
+    res.status(500).json({ error: "Internal server error while creating booking" });
+  }
+});
+
+
+/* ---------------------- UPDATE BOOKING ---------------------- */
 router.put("/bookings/:bookingId", async (req, res) => {
   try {
-    const bookingId = (req.params.bookingId || "").trim();
-    if (!bookingId) return res.status(400).json({ error: "bookingId is required" });
-
-    const existing = await BookingsClean.findOne({ "Booking ID": bookingId }).lean();
-    if (!existing) return res.status(404).json({ error: "Booking not found" });
-
-    const norm = normalizeBookingPayload(req.body || {});
-    // Enforce immutability
-    norm["Booking ID"] = existing["Booking ID"];
-    norm._canonical.booking_id = existing["Booking ID"];
-    if (truthy(existing["Customer ID"])) {
-      norm["Customer ID"] = existing["Customer ID"];
-      norm._canonical.customer_id = existing["Customer ID"];
-    }
+    const bookingId = req.params.bookingId.trim();
+    const BookingsClean =
+      mongoose.models.BookingsClean ||
+      mongoose.model("BookingsClean", new mongoose.Schema({}, { strict: false }), "bookings_clean");
 
     const updated = await BookingsClean.findOneAndUpdate(
       { "Booking ID": bookingId },
-      { $set: { ...norm, updatedAt: new Date() } },
+      { $set: req.body },
       { new: true }
-    );
+    ).lean();
 
-    res.json({ ok: true, booking_id: bookingId, ...presentBookingDoc(updated) });
+    if (!updated) return res.status(404).json({ error: "No booking found" });
+    res.json(updated);
   } catch (err) {
-    console.error("❌ Booking update failed:", err);
-    res.status(500).json({ error: "Failed to update booking in bookings_clean" });
+    console.error("❌ Update booking failed:", err);
+    res.status(500).json({ error: "Failed to update booking" });
   }
 });
 
-// Delete booking
+/* ---------------------- DELETE BOOKING ---------------------- */
 router.delete("/bookings/:bookingId", async (req, res) => {
   try {
-    const bookingId = (req.params.bookingId || "").trim();
-    if (!bookingId) return res.status(400).json({ error: "bookingId is required" });
+    const bookingId = req.params.bookingId.trim();
+    const BookingsClean =
+      mongoose.models.BookingsClean ||
+      mongoose.model("BookingsClean", new mongoose.Schema({}, { strict: false }), "bookings_clean");
 
-    const del = await BookingsClean.findOneAndDelete({ "Booking ID": bookingId });
-    if (!del) return res.status(404).json({ error: "Booking not found" });
+    const deleted = await BookingsClean.findOneAndDelete({ "Booking ID": bookingId }).lean();
 
-    res.json({ ok: true, booking_id: bookingId });
+    if (!deleted) return res.status(404).json({ error: "No booking found" });
+    res.json({ success: true, deleted });
   } catch (err) {
-    console.error("❌ Booking delete failed:", err);
-    res.status(500).json({ error: "Failed to delete booking in bookings_clean" });
+    console.error("❌ Delete booking failed:", err);
+    res.status(500).json({ error: "Failed to delete booking" });
   }
 });
 
-/* --------------------------- SSE: bookings_clean --------------------------- */
-router.get("/bookings/stream", async (req, res) => {
+// DEBUG ROUTE — to inspect actual MongoDB data
+router.get("/bookings/debug", async (req, res) => {
   try {
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders();
-
-    const changeStream = BookingsClean.watch([], { fullDocument: "updateLookup" });
-    changeStream.on("change", (change) => {
-      // Send the booking_id and a compact projection for convenience
-      const fd = change.fullDocument || {};
-      const payload = {
-        operationType: change.operationType,
-        booking_id: fd?.["Booking ID"] ?? null,
-        fullDocument: presentBookingDoc(fd),
-      };
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
-    });
-    req.on("close", () => changeStream.close());
+    const db = mongoose.connection.db;
+    const docs = await db.collection("bookings_clean").find().limit(3).toArray();
+    res.json(docs);
   } catch (err) {
-    console.error("❌ Bookings stream failed:", err);
-    res.status(500).json({ error: "Failed to stream booking changes" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch debug data" });
+  }
+});
+
+
+// In mongoRoutes.js
+router.get("/bookings/recommendations", async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const collection = db.collection("bookings_clean");
+
+    const results = await collection.aggregate([
+      {
+        $facet: {
+          topDrivers: [
+            {
+              $group: {
+                _id: "$Driver ID",
+                avgRating: { $avg: "$Customer Rating" },
+                completionRate: {
+                  $avg: {
+                    $cond: [{ $eq: ["$Booking Status", "Completed"] }, 1, 0],
+                  },
+                },
+                totalRides: { $sum: 1 },
+              },
+            },
+            { $sort: { avgRating: -1, completionRate: -1, totalRides: -1 } },
+            { $limit: 5 },
+          ],
+
+          topLocations: [
+            {
+              $group: {
+                _id: "$Pickup Location",
+                totalBookings: { $sum: 1 },
+                avgCTAT: { $avg: "$Avg CTAT" },
+              },
+            },
+            { $sort: { totalBookings: -1 } },
+            { $limit: 5 },
+          ],
+        },
+      },
+    ]).toArray();
+
+    res.json(results[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch recommendations" });
+  }
+});
+
+/* ------------------ COMPLEX QUERY: Global Recommendations ------------------ */
+router.get("/bookings/global-recommendations", async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const collection = db.collection("bookings_clean");
+
+    console.log("🔍 Connected to collection:", collection.collectionName);
+
+    // Run aggregation pipeline
+    const result = await collection
+      .aggregate([
+        {
+          $facet: {
+            // 🚙️ Top 5 Vehicle Types
+            topVehicles: [
+              {
+                $match: {
+                  "Vehicle Type": { $exists: true, $ne: null, $ne: "" },
+                },
+              },
+              {
+                $group: {
+                  _id: "$Vehicle Type",
+                  avgCustomerRating: {
+                    $avg: { $ifNull: ["$Customer Rating", 0] },
+                  },
+                  avgDriverRating: {
+                    $avg: { $ifNull: ["$Driver Ratings", 0] },
+                  },
+                  avgBookingValue: {
+                    $avg: { $ifNull: ["$Booking Value", 0] },
+                  },
+                  avgVTAT: { $avg: { $ifNull: ["$Avg VTAT", 0] } },
+                  avgCTAT: { $avg: { $ifNull: ["$Avg CTAT", 0] } },
+                  totalRides: { $sum: 1 },
+                },
+              },
+              { $sort: { totalRides: -1, avgCustomerRating: -1 } },
+              { $limit: 5 },
+            ],
+
+            // 💳 Top 5 Payment Methods
+            topPaymentMethods: [
+              {
+                $match: {
+                  "Payment Method": { $exists: true, $ne: null, $ne: "" },
+                },
+              },
+              {
+                $group: {
+                  _id: "$Payment Method",
+                  totalBookings: { $sum: 1 },
+                  avgBookingValue: {
+                    $avg: { $ifNull: ["$Booking Value", 0] },
+                  },
+                  avgCustomerRating: {
+                    $avg: { $ifNull: ["$Customer Rating", 0] },
+                  },
+                },
+              },
+              { $sort: { totalBookings: -1 } },
+              { $limit: 5 },
+            ],
+
+            // 📍 Top 5 Pickup Locations
+            topPickupLocations: [
+              {
+                $match: {
+                  "Pickup Location": { $exists: true, $ne: null, $ne: "" },
+                },
+              },
+              {
+                $group: {
+                  _id: "$Pickup Location",
+                  totalBookings: { $sum: 1 },
+                },
+              },
+              { $sort: { totalBookings: -1 } },
+              { $limit: 5 },
+            ],
+          },
+        },
+      ])
+      .toArray();
+
+    const finalData =
+      result && result[0]
+        ? result[0]
+        : { topVehicles: [], topPaymentMethods: [], topPickupLocations: [] };
+
+    console.log("✅ Aggregation completed successfully.");
+    console.log(
+      "📊 Preview:",
+      JSON.stringify(
+        {
+          topVehicles: finalData.topVehicles?.length || 0,
+          topPaymentMethods: finalData.topPaymentMethods?.length || 0,
+          topPickupLocations: finalData.topPickupLocations?.length || 0,
+        },
+        null,
+        2
+      )
+    );
+
+    res.json(finalData);
+  } catch (err) {
+    console.error("❌ Error in /bookings/global-recommendations:", err);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch global recommendations", details: err.message });
   }
 });
 
 /* ------------------------ Profiles, Snapshots, Decide ---------------------- */
+// Fetch customer profile
 router.get("/customers/:id/profile", async (req, res) => {
   try {
     const cid = (req.params.id || "").trim();
@@ -343,6 +541,7 @@ router.get("/customers/:id/profile", async (req, res) => {
   }
 });
 
+// Fetch customer snapshot
 router.get("/customers/:id/snapshot", async (req, res) => {
   try {
     const cid = (req.params.id || "").trim();
@@ -358,6 +557,7 @@ router.get("/customers/:id/snapshot", async (req, res) => {
   }
 });
 
+// Decision logic
 router.post("/decide", async (req, res) => {
   try {
     const { customerId, vehicleType, hour, dayOfWeek } = req.body || {};
@@ -367,10 +567,10 @@ router.post("/decide", async (req, res) => {
     if (!snap) return res.status(404).json({ error: "Snapshot not found for ID" });
 
     const rating = Number(snap?.metrics?.avg_customer_rating ?? 0);
-    const weekday = ["Monday","Tuesday","Wednesday","Thursday","Friday"].includes(dayOfWeek || "");
+    const weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(dayOfWeek || "");
     let action = { kind: "none" };
 
-    if (rating >= 4.5 && weekday && Number(hour) >= 6 && Number(hour) < 10 && ["Sedan","Premier"].includes(vehicleType)) {
+    if (rating >= 4.5 && weekday && Number(hour) >= 6 && Number(hour) < 10 && ["Sedan", "Premier"].includes(vehicleType)) {
       action = { kind: "discount", valuePct: 10, rationale: "High rating weekday AM commuter" };
     } else if ((snap?.metrics?.cancels_by_customer ?? 0) >= 2) {
       action = { kind: "discount", valuePct: 5, rationale: "Reduce churn (recent cancels)" };
@@ -382,6 +582,109 @@ router.post("/decide", async (req, res) => {
     res.status(500).json({ error: "Failed to compute decision" });
   }
 });
+
+
+// ================================================================
+// 💡 Promotions Decision Logic (/api/mongo/decide)
+// ================================================================
+router.post("/decide", async (req, res) => {
+  try {
+    const { customerId, vehicleType, hour, dayOfWeek } = req.body;
+    if (!customerId)
+      return res.status(400).json({ error: "Missing customerId" });
+
+    const db = mongoose.connection.db;
+    const customers = db.collection("customer_snapshots");
+
+    // Step 1: Load customer's latest snapshot
+    const snapshot = await customers.findOne({ "Customer ID": customerId });
+    if (!snapshot)
+      return res.status(404).json({ error: "Customer not found" });
+
+    // Step 2: Derive engagement & behavior metrics
+    const totalRides = snapshot["Total Rides"] || 0;
+    const avgRating = snapshot["Average Rating"] || 0;
+    const lastActiveDays = snapshot["Days Since Last Ride"] || 999;
+
+    // Step 3: Apply promotional rules
+    let promo = null;
+
+    // Rule A: New or inactive users → 20% discount
+    if (totalRides < 5 || lastActiveDays > 14) {
+      promo = { kind: "discount", valuePct: 20, reason: "Reactivation offer" };
+    }
+
+    // Rule B: Loyal users (many rides + high rating) → 10%
+    else if (totalRides >= 50 && avgRating >= 4.5) {
+      promo = { kind: "discount", valuePct: 10, reason: "Loyalty reward" };
+    }
+
+    // Rule C: Off-peak hour (before 8AM or after 9PM) → 15%
+    else if (hour < 8 || hour > 21) {
+      promo = { kind: "discount", valuePct: 15, reason: "Off-peak incentive" };
+    }
+
+    // Rule D: Weekends + Bike type → 25%
+    else if (["Saturday", "Sunday"].includes(dayOfWeek) && vehicleType === "Bike") {
+      promo = { kind: "discount", valuePct: 25, reason: "Weekend bike promo" };
+    }
+
+    // Default → No promotion
+    const decision = promo
+      ? {
+          action: promo,
+          eligible: true,
+          appliedAt: new Date(),
+          criteriaMatched: promo.reason,
+        }
+      : {
+          action: { kind: "none" },
+          eligible: false,
+          criteriaMatched: "No rules matched",
+        };
+
+    res.json(decision);
+  } catch (err) {
+    console.error("❌ Error in /decide:", err);
+    res.status(500).json({ error: "Failed to evaluate promotion" });
+  }
+});
+
+
+/* ----------------------------- Dashboard Routes ---------------------------- */
+// Overall KPI summary
+router.get("/summary", async (_req, res) => {
+  try {
+    const result = await BookingsClean.aggregate([
+      {
+        $group: {
+          _id: null,
+          total_bookings: { $sum: 1 },
+          avg_vtat: { $avg: "$Avg VTAT" },
+          avg_ctat: { $avg: "$Avg CTAT" },
+          avg_customer_rating: { $avg: "$Customer Rating" },
+        },
+      },
+    ]);
+    const data = result[0] || { total_bookings: 0, avg_vtat: 0, avg_ctat: 0, avg_customer_rating: 0 };
+    res.json(data);
+  } catch (err) {
+    console.error("❌ Summary fetch failed:", err);
+    res.status(500).json({ error: "Failed to fetch overall summary" });
+  }
+});
+
+// Customer list
+router.get("/customers", async (_req, res) => {
+  try {
+    const customers = await CustomerProfiles.find({}, { _id: 1 }).limit(100).lean();
+    res.json(customers);
+  } catch (err) {
+    console.error("❌ Customer list fetch failed:", err);
+    res.status(500).json({ error: "Failed to fetch customers" });
+  }
+});
+
 
 /* ------------------- ChangeStream: bookings_clean → profiles ----------------
    We keep incremental aggregation to customer_profiles only.

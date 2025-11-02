@@ -48,6 +48,7 @@ export default function TripReplay() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [overview, setOverview] = useState(null); // 🆕 for complex query overview
 
   // Create / Update modals
   const [showCreate, setShowCreate] = useState(false);
@@ -60,15 +61,56 @@ export default function TripReplay() {
     labelList.reduce((acc, [label]) => ({ ...acc, [label]: "" }), {})
   );
 
+  /* -------------------------- LOAD OVERVIEW (AGGREGATES) -------------------------- */
+  useEffect(() => {
+    async function loadOverview() {
+      try {
+        const res = await fetch("http://localhost:5002/api/mongo/bookings/overview");
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+        setOverview(json);
+      } catch (e) {
+        console.error("Failed to load overview:", e);
+      }
+    }
+    loadOverview();
+  }, []);
+
   /* ------------------------------- CREATE ------------------------------- */
-  const openCreateModal = () => {
-    setErr("");
-    setCreateForm((prev) => ({
-      ...prev,
-      ["Booking ID"]: bookingId || prev["Booking ID"],
-    }));
-    setShowCreate(true);
-  };
+const openCreateModal = async () => {
+  setErr("");
+
+  const id = (bookingId || "").trim();
+  if (!id) {
+    setErr("Please enter a Booking ID before creating.");
+    return;
+  }
+
+  try {
+    // Check if booking already exists before opening the modal
+    const res = await fetch(
+      `http://localhost:5002/api/mongo/bookings/${encodeURIComponent(id)}`
+    );
+    if (res.ok) {
+      // booking found
+      const existing = await res.json();
+      if (existing && existing["Booking ID"]) {
+        setErr(`Booking ID ${id} already exists.`);
+        return; // don’t open modal
+      }
+    }
+  } catch (err) {
+    console.warn("⚠️ Could not check booking existence:", err);
+  }
+
+  // Only open the modal if it doesn't already exist
+  setCreateForm((prev) => ({
+    ...prev,
+    ["Booking ID"]: id,
+  }));
+  setShowCreate(true);
+};
+
 
   const submitCreate = async () => {
     setErr("");
@@ -122,7 +164,6 @@ export default function TripReplay() {
   /* ------------------------------- UPDATE ------------------------------- */
   const openEditModal = () => {
     if (!data) return setErr("Load a booking first before editing.");
-    // Prefill with current values
     const prefill = {};
     labelList.forEach(([label]) => {
       prefill[label] = data?.[label] ?? "";
@@ -135,7 +176,6 @@ export default function TripReplay() {
     const id = (bookingId || editForm["Booking ID"] || "").trim();
     if (!id) return setErr("Enter or load a booking ID to update.");
 
-    // Booking ID & Customer ID immutable on the server; we still disable them in UI.
     const body = {};
     Object.entries(editForm).forEach(([k, v]) => {
       const n = typeof v === "string" ? v.trim() : v;
@@ -153,7 +193,7 @@ export default function TripReplay() {
       );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-      setData(json); // server already returns the projected doc
+      setData(json);
       setShowEdit(false);
       setErr("");
     } catch (e) {
@@ -187,7 +227,6 @@ export default function TripReplay() {
         const change = JSON.parse(e.data);
         const id = data?.["Booking ID"] || bookingId;
         if (id && change?.booking_id === id) {
-          // Refresh view with the latest doc from stream
           setData(change.fullDocument);
         }
       } catch {
@@ -215,12 +254,62 @@ export default function TripReplay() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-semibold text-gray-800 dark:text-yellow-400">
-              Trip Replay (MongoDB · Create → bookings_clean · Live Updates)
+              Trip Replay (Live Updates)
             </h1>
           </div>
 
-          {/* Controls */}
-          <div className="bg-white dark:bg-[#1A1D21] border border-gray-100 dark:border-gray-700 rounded-xl p-4">
+          {/* ------------------- OVERVIEW SECTION (AGGREGATED) ------------------- */}
+          {overview && (
+            <div className="bg-white dark:bg-[#1A1D21] border border-gray-100 dark:border-gray-700 rounded-xl p-4">
+              <h2 className="text-xl font-semibold mb-3 text-Black-400">
+                Bookings Overview
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-600/30">
+                  <p className="text-sm text-gray-400">Total Bookings</p>
+                  <p className="text-2xl font-semibold text-emerald-400">
+                    {overview.total_bookings ?? "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-600/30">
+                  <p className="text-sm text-gray-400">Average VTAT</p>
+                  <p className="text-2xl font-semibold text-blue-400">
+                    {overview.avg_vtat ? overview.avg_vtat.toFixed(2) : "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 border border-indigo-600/30">
+                  <p className="text-sm text-gray-400">Average CTAT</p>
+                  <p className="text-2xl font-semibold text-indigo-400">
+                    {overview.avg_ctat ? overview.avg_ctat.toFixed(2) : "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-gradient-to-br from-rose-500/10 to-rose-500/5 border border-rose-600/30">
+                  <p className="text-sm text-gray-400">Average Rating</p>
+                  <p className="text-2xl font-semibold text-rose-400">
+                    {overview.avg_customer_rating
+                      ? overview.avg_customer_rating.toFixed(1)
+                      : "—"}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-gradient-to-br from-yellow-500/10 to-yellow-500/5 border border-yellow-600/30">
+                  <p className="text-sm text-gray-400">Total Cancelled</p>
+                  <p className="text-2xl font-semibold text-yellow-400">
+                    {overview.cancelled ?? "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+
+          {/* Controls Section */}
+          <div className="bg-white dark:bg-[#1A1D21] border border-gray-100 dark:border-gray-700 rounded-xl p-5 space-y-4">
+            {/* Title */}
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-yellow-400">
+              Booking CRUD Operations
+            </h2>
+
+            {/* Input + Buttons */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
               <input
                 value={bookingId}
@@ -265,7 +354,8 @@ export default function TripReplay() {
                 </button>
               </div>
             </div>
-            {err && <p className="mt-3 text-sm text-red-500">{err}</p>}
+
+            {err && <p className="mt-2 text-sm text-red-500">{err}</p>}
           </div>
 
           {/* Booking Details */}
