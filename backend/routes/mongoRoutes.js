@@ -82,6 +82,16 @@ router.get("/health", (_req, res) => {
   });
 });
 
+/* -------------------------- utility helpers ------------------------------- */
+function combineDateTime(date, time) {
+  if (!date) return null;
+  try {
+    const iso = time ? `${date}T${time}` : date;
+    return new Date(iso);
+  } catch {
+    return null;
+  }
+}
 
 /* -------------------------- normalization (payload) ------------------------ */
 // Accept both human labels and camel/snake keys.
@@ -279,35 +289,35 @@ router.get("/bookings/:bookingId", async (req, res) => {
   }
 });
 
-/* ---------------------- CREATE BOOKING ---------------------- */
-router.post("/bookings", async (req, res) => {
-  try {
-    const BookingsClean =
-      mongoose.models.BookingsClean ||
-      mongoose.model("BookingsClean", new mongoose.Schema({}, { strict: false }), "bookings_clean");
+// /* ---------------------- CREATE BOOKING ---------------------- */
+// router.post("/bookings", async (req, res) => {
+//   try {
+//     const BookingsClean =
+//       mongoose.models.BookingsClean ||
+//       mongoose.model("BookingsClean", new mongoose.Schema({}, { strict: false }), "bookings_clean");
 
-    const payload = req.body || {};
-    const bookingId = (payload["Booking ID"] || "").trim();
+//     const payload = req.body || {};
+//     const bookingId = (payload["Booking ID"] || "").trim();
 
-    // Check if Booking ID is provided
-    if (!bookingId) {
-      return res.status(400).json({ error: "Booking ID is required" });
-    }
+//     // Check if Booking ID is provided
+//     if (!bookingId) {
+//       return res.status(400).json({ error: "Booking ID is required" });
+//     }
 
-    // Check for duplicate Booking ID
-    const existing = await BookingsClean.findOne({ "Booking ID": bookingId }).lean();
-    if (existing) {
-      return res.status(409).json({ error: "Booking ID already exists" });
-    }
+//     // Check for duplicate Booking ID
+//     const existing = await BookingsClean.findOne({ "Booking ID": bookingId }).lean();
+//     if (existing) {
+//       return res.status(409).json({ error: "Booking ID already exists" });
+//     }
 
-    // Create new document
-    const doc = await BookingsClean.create(payload);
-    res.json(doc);
-  } catch (err) {
-    console.error("❌ Booking create failed:", err);
-    res.status(500).json({ error: "Internal server error while creating booking" });
-  }
-});
+//     // Create new document
+//     const doc = await BookingsClean.create(payload);
+//     res.json(doc);
+//   } catch (err) {
+//     console.error("❌ Booking create failed:", err);
+//     res.status(500).json({ error: "Internal server error while creating booking" });
+//   }
+// });
 
 
 /* ---------------------- UPDATE BOOKING ---------------------- */
@@ -649,6 +659,172 @@ router.post("/decide", async (req, res) => {
     res.status(500).json({ error: "Failed to evaluate promotion" });
   }
 });
+
+
+// GET /api/mongo/promotions/eligibility-facets?hour=18&day=Sunday&vehicle=Bike&forCustomer=CID123
+router.get("/promotions/eligibility-facets", async (req, res) => {
+  try {
+    const hour = Number(req.query.hour ?? 18);
+    const day = String(req.query.day ?? "Sunday");
+    const vehicle = String(req.query.vehicle ?? "Bike"); // reserved for future filters
+    const forCustomer = String(req.query.forCustomer || "").trim();
+
+    const db = mongoose.connection.db;
+    const snaps = db.collection("customer_snapshots");
+
+    // ---- (A) Optional cohort anchor based on a reference customer
+    let cohortMatch = null;
+    if (forCustomer) {
+      const ref = await snaps.findOne({ _id: forCustomer });
+      if (ref) {
+        // NOTE: ref fields may be strings in your dataset; coerce to numbers for windows
+        const refRides = typeof ref["Total Rides"] === "number" ? ref["Total Rides"] : Number(ref["Total Rides"]);
+        const refRating = typeof ref["Average Rating"] === "number" ? ref["Average Rating"] : Number(ref["Average Rating"]);
+        const refLast = typeof ref["Days Since Last Ride"] === "number" ? ref["Days Since Last Ride"] : Number(ref["Days Since Last Ride"]);
+
+        cohortMatch = {
+          ...(Number.isFinite(refRides)
+            ? { "Total Rides": { $gte: Math.max(0, refRides - 10), $lte: refRides + 10 } }
+            : {}),
+          ...(Number.isFinite(refRating)
+            ? { "Average Rating": { $gte: refRating - 0.5, $lte: refRating + 0.5 } }
+            : {}),
+          ...(Number.isFinite(refLast)
+            ? { "Days Since Last Ride": { $gte: Math.max(0, refLast - 7), $lte: refLast + 7 } }
+            : {}),
+        };
+      }
+    }
+
+    const pipeline = [
+      // ---- (B) Apply cohort narrowing first (if any)
+      ...(cohortMatch ? [{ $match: cohortMatch }] : []),
+
+      // ---- (C) Cast types once so numeric math/buckets work (avoids "other")
+      {
+        $addFields: {
+          _totalRides: {
+            $cond: [
+              { $in: [{ $type: "$Total Rides" }, ["int", "long", "double", "decimal"]] },
+              "$Total Rides",
+              {
+                $cond: [
+                  { $eq: [{ $type: "$Total Rides" }, "string"] },
+                  { $toInt: { $trim: { input: "$Total Rides" } } },
+                  null
+                ]
+              }
+            ]
+          },
+          _avgRating: {
+            $cond: [
+              { $in: [{ $type: "$Average Rating" }, ["int", "long", "double", "decimal"]] },
+              "$Average Rating",
+              {
+                $cond: [
+                  { $eq: [{ $type: "$Average Rating" }, "string"] },
+                  { $toDouble: { $trim: { input: "$Average Rating" } } },
+                  null
+                ]
+              }
+            ]
+          }
+        }
+      },
+
+      // ---- (D) Rule-based eligibility using the casted fields
+      {
+        $match: {
+          $expr: {
+            $or: [
+              // Reactivation
+              { $lt: ["$_totalRides", 5] },
+              // Loyalty (weekday morning)
+              {
+                $and: [
+                  { $gte: ["$_avgRating", 4.5] },
+                  { $in: [day, ["Monday","Tuesday","Wednesday","Thursday","Friday"]] },
+                  { $and: [{ $gte: [hour, 6] }, { $lt: [hour, 10] }] }
+                ]
+              },
+              // Off-peak (late night or very early)
+              { $or: [{ $lt: [hour, 8] }, { $gt: [hour, 21] }] }
+            ]
+          }
+        }
+      },
+
+      // ---- (E) Facets (use casted fields for buckets)
+      {
+        $facet: {
+          byRating: [
+            {
+              $bucket: {
+                groupBy: "$_avgRating",
+                boundaries: [0, 3, 3.5, 4, 4.5, 5.1],
+                default: "other",
+                output: { count: { $sum: 1 } }
+              }
+            }
+          ],
+          byRideCount: [
+            {
+              $bucket: {
+                groupBy: "$_totalRides",
+                boundaries: [0, 5, 20, 50, 100, 10000],
+                default: "other",
+                output: { count: { $sum: 1 } }
+              }
+            }
+          ],
+          byDayHour: [
+            { $project: { DayOfWeek: 1, Hour: 1 } },
+            { $group: { _id: { d: "$DayOfWeek", h: "$Hour" }, n: { $sum: 1 } } },
+            { $sort: { "_id.d": 1, "_id.h": 1 } }
+          ],
+          suggestedBand: [
+            {
+              $project: {
+                band: {
+                  $switch: {
+                    branches: [
+                      { case: { $lt: ["$_totalRides", 5] }, then: "20% Reactivation" },
+                      {
+                        case: {
+                          $and: [
+                            { $gte: ["$_avgRating", 4.5] },
+                            { $in: [day, ["Monday","Tuesday","Wednesday","Thursday","Friday"]] },
+                            { $and: [{ $gte: [hour, 6] }, { $lt: [hour, 10] }] }
+                          ]
+                        },
+                        then: "10% Loyalty (AM commute)"
+                      },
+                      { case: { $or: [{ $lt: [hour, 8] }, { $gt: [hour, 21] }] }, then: "15% Off-peak" }
+                    ],
+                    default: "No promo"
+                  }
+                }
+              }
+            },
+            { $group: { _id: "$band", customers: { $sum: 1 } } },
+            { $sort: { customers: -1 } }
+          ]
+        }
+      }
+    ];
+
+    const [out] = await snaps.aggregate(pipeline).toArray();
+    res.json(out ?? { byRating: [], byRideCount: [], byDayHour: [], suggestedBand: [] });
+  } catch (err) {
+    console.error("❌ eligibility-facets failed:", err);
+    res.status(500).json({ error: "Failed to compute eligibility facets" });
+  }
+});
+
+
+
+
+
 
 
 /* ----------------------------- Dashboard Routes ---------------------------- */

@@ -11,9 +11,11 @@ import {
   FaCar,
   FaMapMarkerAlt,
   FaClock,
-  FaUserFriends
+  FaUserFriends,
+  FaPercent
 } from "react-icons/fa";
 import { SiMongodb } from "react-icons/si";
+import { BsStars } from "react-icons/bs";
 
 export default function Sidebar() {
   return (
@@ -87,10 +89,11 @@ export default function Sidebar() {
         {/* MongoDB Database Section */}
         <div>
           <h3 className="px-4 mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-            Mongolians
+            MongoDB
           </h3>
+
           <div className="space-y-1">
-            
+            {/* Trip Replay */}
             <NavLink
               to="/mongo-trip-replay"
               className={({ isActive }) =>
@@ -101,10 +104,11 @@ export default function Sidebar() {
                 }`
               }
             >
-              <span className="w-2 h-2 rounded-full bg-green-600"></span>
+              <FaChartLine className="w-5 h-5 text-green-600 dark:text-green-400" />
               <span>Trip Replay</span>
             </NavLink>
 
+            {/* Recommendations */}
             <NavLink
               to="/mongo-recommendations"
               className={({ isActive }) =>
@@ -115,10 +119,11 @@ export default function Sidebar() {
                 }`
               }
             >
-              <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+              <BsStars className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               <span>Recommendations</span>
             </NavLink>
 
+            {/* Promotions Lab */}
             <NavLink
               to="/mongo-promotions"
               className={({ isActive }) =>
@@ -129,7 +134,7 @@ export default function Sidebar() {
                 }`
               }
             >
-              <span className="w-2 h-2 rounded-full bg-teal-600"></span>
+              <FaPercent className="w-5 h-5 text-teal-600 dark:text-teal-400" />
               <span>Promotions Lab</span>
             </NavLink>
           </div>
