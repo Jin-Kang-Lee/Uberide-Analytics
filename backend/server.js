@@ -8,8 +8,7 @@ dotenv.config();
 
 //MONGODB
 import { connectMongo } from "./config/mongo.js";
-import rideRoutes from "./routes/rideRoutes.js";
-import bookingRoutes from "./routes/bookingRoutes.js";
+import mongoRoutes from "./routes/mongoRoutes.js";
 
 
 const app = express();
@@ -969,9 +968,9 @@ mongoApp.use(express.json());
 (async () => {
   try {
     const conn = await connectMongo();
-    console.log('🍃 MongoDB connected successfully → ${conn.connection.name}');
-    mongoApp.use("/api/mongo", rideRoutes);
-    mongoApp.use("/api/mongo", bookingRoutes);
+    console.log(`🍃 MongoDB connected successfully → ${conn.connection.name}`);
+    // Canonical analytics (time_buckets, location_stats, vehicle_stats, customer_profiles)
+    mongoApp.use("/api/mongo", mongoRoutes);
 
     mongoApp.listen(5002, () =>
       console.log("🍃 MongoDB backend running on port 5002")

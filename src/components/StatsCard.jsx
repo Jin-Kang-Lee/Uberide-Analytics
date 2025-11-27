@@ -11,18 +11,18 @@ export default function StatsCard({ title, value, icon, loading }) {
   };
 
   return (
-    <div className="bg-white dark:bg-[#181A20] shadow-sm p-4 rounded-2xl flex items-center">
+    <div className="bg-white dark:bg-[#181A20] shadow-sm p-4 rounded-2xl flex items-center space-x-4 transition-colors duration-300 hover:shadow-md">
+      {/* Icon */}
+      <div className="text-3xl flex-shrink-0">{icon}</div>
 
-      <div className="text-3xl">{icon}</div>
-
-      <div>
+      {/* Text content */}
+      <div className="flex flex-col">
         <p className="text-gray-500 text-sm">{title}</p>
 
-        {/* Loading shimmer */}
         {loading ? (
           <div className="h-6 w-20 bg-gray-200 rounded animate-pulse mt-1"></div>
         ) : (
-          <h3 className="text-2xl font-bold">
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             {formatNumber(value)}
           </h3>
         )}

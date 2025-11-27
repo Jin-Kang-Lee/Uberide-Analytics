@@ -12,9 +12,11 @@ import {
   FaMapMarkerAlt,
   FaClock,
   FaUserFriends,
-  FaHotdog
+  FaHotdog,
+  FaPercent
 } from "react-icons/fa";
 import { SiMongodb } from "react-icons/si";
+import { BsStars } from "react-icons/bs";
 
 export default function Sidebar() {
   return (
@@ -58,6 +60,8 @@ export default function Sidebar() {
           <span>City Insights</span>
         </NavLink>
 
+        
+
         {/* Customer Insights */}
         <NavLink
           to="/customer-insights"
@@ -93,12 +97,13 @@ export default function Sidebar() {
         {/* MongoDB Database Section */}
         <div>
           <h3 className="px-4 mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-            Operational Overview
+            MongoDB
           </h3>
+
           <div className="space-y-1">
-            {/* Operational Overview */}
+            {/* Trip Replay */}
             <NavLink
-              to="/operationaloverview"
+              to="/mongo-trip-replay"
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
                   isActive
@@ -107,19 +112,13 @@ export default function Sidebar() {
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  <SiMongodb 
-                    className={isActive ? "text-white dark:text-black" : "text-green-600 dark:text-yellow-400"} 
-                  />
-                  <span>Operational Overview</span>
-                </>
-              )}
+              <FaChartLine className="w-5 h-5 text-green-600 dark:text-green-400" />
+              <span>Trip Replay</span>
             </NavLink>
 
-            {/* Vehicles - Purple */}
+            {/* Recommendations */}
             <NavLink
-              to="/mongo-vehicles"
+              to="/mongo-recommendations"
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
                   isActive
@@ -128,64 +127,13 @@ export default function Sidebar() {
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  <FaCar 
-                    className={isActive ? "text-white dark:text-black" : "text-purple-600 dark:text-yellow-400"} 
-                    size={18}
-                  />
-                  <span>Vehicles</span>
-                </>
-              )}
+              <BsStars className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <span>Recommendations</span>
             </NavLink>
 
-            {/* Locations - Red */}
+            {/* Promotions Lab */}
             <NavLink
-              to="/mongo-locations"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  isActive
-                    ? "bg-red-600 text-white dark:bg-yellow-400 dark:text-black"
-                    : "text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#222531]"
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <FaMapMarkerAlt 
-                    className={isActive ? "text-white dark:text-black" : "text-red-600 dark:text-yellow-400"} 
-                    size={18}
-                  />
-                  <span>Locations</span>
-                </>
-              )}
-            </NavLink>
-
-            {/* Time Analysis - Blue */}
-            <NavLink
-              to="/mongo-time-analysis"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  isActive
-                    ? "bg-blue-600 text-white dark:bg-yellow-400 dark:text-black"
-                    : "text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#222531]"
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <FaClock 
-                    className={isActive ? "text-white dark:text-black" : "text-blue-600 dark:text-yellow-400"} 
-                    size={18}
-                  />
-                  <span>Time Analysis</span>
-                </>
-              )}
-            </NavLink>
-
-            {/* Customer Analysis - Teal */}
-            <NavLink
-              to="/mongo-customer-analysis"
+              to="/mongo-promotions"
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition-colors ${
                   isActive
@@ -194,15 +142,8 @@ export default function Sidebar() {
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  <FaUserFriends 
-                    className={isActive ? "text-white dark:text-black" : "text-teal-600 dark:text-yellow-400"} 
-                    size={18}
-                  />
-                  <span>Customer Analysis</span>
-                </>
-              )}
+              <FaPercent className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+              <span>Promotions Lab</span>
             </NavLink>
           </div>
         </div>
