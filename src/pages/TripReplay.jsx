@@ -40,7 +40,7 @@ const labelList = [
   ["Hour", ""],
 ];
 
-const emptyToNull = (v) => (v === "" ? null : v);
+// const emptyToNull = (v) => (v === "" ? null : v);
 
 /* ------------------------------ component ------------------------------- */
 export default function TripReplay() {

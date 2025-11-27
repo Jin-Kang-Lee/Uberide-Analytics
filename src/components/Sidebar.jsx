@@ -1,21 +1,15 @@
-import React from "react";
+
 import { NavLink } from "react-router-dom";
 import { 
   FaChartBar, 
   FaGlobeAsia, 
-  FaBookOpen, 
   FaUsers, 
   FaChartLine,
   FaDatabase,
   FaLeaf,
-  FaCar,
-  FaMapMarkerAlt,
-  FaClock,
-  FaUserFriends,
   FaHotdog,
   FaPercent
 } from "react-icons/fa";
-import { SiMongodb } from "react-icons/si";
 import { BsStars } from "react-icons/bs";
 
 export default function Sidebar() {
@@ -60,7 +54,7 @@ export default function Sidebar() {
           <span>City Insights</span>
         </NavLink>
 
-        
+
 
         {/* Customer Insights */}
         <NavLink

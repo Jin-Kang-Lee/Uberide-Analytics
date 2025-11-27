@@ -45,7 +45,7 @@ export default function Dashboard() {
                   <StatsCard title="Total Revenue" value={`$${summary.total_revenue}`} loading={loading} />
                   <StatsCard title="Avg Distance" value={`${summary.avg_distance} km`} loading={loading} />
                   <StatsCard title="Avg Rating" value={`${summary.avg_rating}`} loading={loading} />
-                  <StatsCard title="B2B Ride %" value={`${summary.b2b_percentage ?? "N/A"}%`} loading={loading} />
+                  {/* <StatsCard title="B2B Ride %" value={`${summary.b2b_percentage ?? "N/A"}%`} loading={loading} /> */}
                 </>
               ) : (
                 <p className="col-span-5 text-center text-gray-500 dark:text-gray-400">
