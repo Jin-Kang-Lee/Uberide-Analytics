@@ -8,8 +8,7 @@ dotenv.config();
 
 //MONGODB
 import { connectMongo } from "./config/mongo.js";
-import rideRoutes from "./routes/rideRoutes.js";
-import bookingRoutes from "./routes/bookingRoutes.js";
+import mongoRoutes from "./routes/mongoRoutes.js";
 
 
 const app = express();
