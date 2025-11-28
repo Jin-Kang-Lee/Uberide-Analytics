@@ -11,7 +11,7 @@ export default function PromotionsLab() {
   const [dayOfWeek, setDayOfWeek] = useState("Sunday");
   const [snapshot, setSnapshot] = useState(null);
   const [decision, setDecision] = useState(null);
-  const [setErr] = useState("");
+  const [err, setErr] = useState("");
   const [eligibility, setEligibility] = useState(null);
 
   // Automatically load eligibility facets when page opens
