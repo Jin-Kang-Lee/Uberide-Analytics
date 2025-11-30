@@ -283,10 +283,10 @@ function EligibilityCards({ data, context }) {
                 value={vehicleType}
                 onChange={(e) => setVehicleType(e.target.value)}
               >
+                <option>Sedan</option>
                 <option>Bike</option>
+                <option>Ebike</option>
                 <option>Auto</option>
-                <option>Car</option>
-                <option>Premier</option>
               </select>
 
               <input

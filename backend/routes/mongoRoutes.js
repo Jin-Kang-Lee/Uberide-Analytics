@@ -568,238 +568,144 @@ router.get("/customers/:id/snapshot", async (req, res) => {
 });
 
 // Decision logic
+// Decision logic
+// ================================================================
+//  ✔ FINAL /decide LOGIC (Version A — matches your frontend & dataset)
+// ================================================================
 router.post("/decide", async (req, res) => {
   try {
     const { customerId, vehicleType, hour, dayOfWeek } = req.body || {};
-    if (!customerId) return res.status(400).json({ error: "customerId required" });
 
+    if (!customerId)
+      return res.status(400).json({ error: "customerId required" });
+
+    // Load snapshot based on your real structure
     const snap = await CustomerSnapshots.findOne({ _id: customerId }).lean();
-    if (!snap) return res.status(404).json({ error: "Snapshot not found for ID" });
+    if (!snap)
+      return res.status(404).json({ error: "Snapshot not found for ID" });
 
-    const rating = Number(snap?.metrics?.avg_customer_rating ?? 0);
-    const weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(dayOfWeek || "");
+    const rating = Number(snap.metrics?.avg_customer_rating ?? 0);
+    const cancels = Number(snap.metrics?.cancels_by_customer ?? 0);
+    const weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+      .includes(dayOfWeek || "");
+
     let action = { kind: "none" };
 
-    if (rating >= 4.5 && weekday && Number(hour) >= 6 && Number(hour) < 10 && ["Sedan", "Premier"].includes(vehicleType)) {
+    // Rule 1: Weekday AM Commuter — 10%
+    if (
+      rating >= 4.5 &&
+      weekday &&
+      Number(hour) >= 6 &&
+      Number(hour) < 10 &&
+      ["Sedan", "Premier"].includes(vehicleType)
+    ) {
       action = { kind: "discount", valuePct: 10, rationale: "High rating weekday AM commuter" };
-    } else if ((snap?.metrics?.cancels_by_customer ?? 0) >= 2) {
+    }
+
+    // Rule 2: Churn prevention — 5%
+    else if (cancels >= 2) {
       action = { kind: "discount", valuePct: 5, rationale: "Reduce churn (recent cancels)" };
     }
 
-    res.json({ customerId, context: { vehicleType, hour: Number(hour), dayOfWeek }, snapshot_metrics: snap?.metrics ?? null, action });
+    res.json({
+      customerId,
+      context: { vehicleType, hour: Number(hour), dayOfWeek },
+      snapshot_metrics: snap.metrics ?? null,
+      action,
+    });
+
   } catch (err) {
     console.error("❌ Decide failed:", err);
     res.status(500).json({ error: "Failed to compute decision" });
   }
 });
 
-
 // ================================================================
-// 💡 Promotions Decision Logic (/api/mongo/decide)
+//  ✔ ELIGIBILITY FACETS (Always returns data)
 // ================================================================
-router.post("/decide", async (req, res) => {
-  try {
-    const { customerId, vehicleType, hour, dayOfWeek } = req.body;
-    if (!customerId)
-      return res.status(400).json({ error: "Missing customerId" });
-
-    const db = mongoose.connection.db;
-    const customers = db.collection("customer_snapshots");
-
-    // Step 1: Load customer's latest snapshot
-    const snapshot = await customers.findOne({ "Customer ID": customerId });
-    if (!snapshot)
-      return res.status(404).json({ error: "Customer not found" });
-
-    // Step 2: Derive engagement & behavior metrics
-    const totalRides = snapshot["Total Rides"] || 0;
-    const avgRating = snapshot["Average Rating"] || 0;
-    const lastActiveDays = snapshot["Days Since Last Ride"] || 999;
-
-    // Step 3: Apply promotional rules
-    let promo = null;
-
-    // Rule A: New or inactive users → 20% discount
-    if (totalRides < 5 || lastActiveDays > 14) {
-      promo = { kind: "discount", valuePct: 20, reason: "Reactivation offer" };
-    }
-
-    // Rule B: Loyal users (many rides + high rating) → 10%
-    else if (totalRides >= 50 && avgRating >= 4.5) {
-      promo = { kind: "discount", valuePct: 10, reason: "Loyalty reward" };
-    }
-
-    // Rule C: Off-peak hour (before 8AM or after 9PM) → 15%
-    else if (hour < 8 || hour > 21) {
-      promo = { kind: "discount", valuePct: 15, reason: "Off-peak incentive" };
-    }
-
-    // Rule D: Weekends + Bike type → 25%
-    else if (["Saturday", "Sunday"].includes(dayOfWeek) && vehicleType === "Bike") {
-      promo = { kind: "discount", valuePct: 25, reason: "Weekend bike promo" };
-    }
-
-    // Default → No promotion
-    const decision = promo
-      ? {
-          action: promo,
-          eligible: true,
-          appliedAt: new Date(),
-          criteriaMatched: promo.reason,
-        }
-      : {
-          action: { kind: "none" },
-          eligible: false,
-          criteriaMatched: "No rules matched",
-        };
-
-    res.json(decision);
-  } catch (err) {
-    console.error("❌ Error in /decide:", err);
-    res.status(500).json({ error: "Failed to evaluate promotion" });
-  }
-});
-
-
-// GET /api/mongo/promotions/eligibility-facets?hour=18&day=Sunday&vehicle=Bike&forCustomer=CID123
 router.get("/promotions/eligibility-facets", async (req, res) => {
   try {
-    const hour = Number(req.query.hour ?? 18);
-    const day = String(req.query.day ?? "Sunday");
-    const vehicle = String(req.query.vehicle ?? "Bike"); // reserved for future filters
-    const forCustomer = String(req.query.forCustomer || "").trim();
+    const hour = Number(req.query.hour);
+    const day = String(req.query.day);
 
-    const db = mongoose.connection.db;
-    const snaps = db.collection("customer_snapshots");
-
-    // ---- (A) Optional cohort anchor based on a reference customer
-    let cohortMatch = null;
-    if (forCustomer) {
-      const ref = await snaps.findOne({ _id: forCustomer });
-      if (ref) {
-        // NOTE: ref fields may be strings in your dataset; coerce to numbers for windows
-        const refRides = typeof ref["Total Rides"] === "number" ? ref["Total Rides"] : Number(ref["Total Rides"]);
-        const refRating = typeof ref["Average Rating"] === "number" ? ref["Average Rating"] : Number(ref["Average Rating"]);
-        const refLast = typeof ref["Days Since Last Ride"] === "number" ? ref["Days Since Last Ride"] : Number(ref["Days Since Last Ride"]);
-
-        cohortMatch = {
-          ...(Number.isFinite(refRides)
-            ? { "Total Rides": { $gte: Math.max(0, refRides - 10), $lte: refRides + 10 } }
-            : {}),
-          ...(Number.isFinite(refRating)
-            ? { "Average Rating": { $gte: refRating - 0.5, $lte: refRating + 0.5 } }
-            : {}),
-          ...(Number.isFinite(refLast)
-            ? { "Days Since Last Ride": { $gte: Math.max(0, refLast - 7), $lte: refLast + 7 } }
-            : {}),
-        };
-      }
-    }
+    const snaps = mongoose.connection.db.collection("customer_snapshots");
 
     const pipeline = [
-      // ---- (B) Apply cohort narrowing first (if any)
-      ...(cohortMatch ? [{ $match: cohortMatch }] : []),
 
-      // ---- (C) Cast types once so numeric math/buckets work (avoids "other")
+      // Cast types
       {
         $addFields: {
-          _totalRides: {
+          rating: {
             $cond: [
-              { $in: [{ $type: "$Total Rides" }, ["int", "long", "double", "decimal"]] },
-              "$Total Rides",
-              {
-                $cond: [
-                  { $eq: [{ $type: "$Total Rides" }, "string"] },
-                  { $toInt: { $trim: { input: "$Total Rides" } } },
-                  null
-                ]
-              }
+              { $in: [{ $type: "$metrics.avg_customer_rating" }, ["int","double","long","decimal"]] },
+              "$metrics.avg_customer_rating",
+              null
             ]
           },
-          _avgRating: {
+          rides: {
             $cond: [
-              { $in: [{ $type: "$Average Rating" }, ["int", "long", "double", "decimal"]] },
-              "$Average Rating",
-              {
-                $cond: [
-                  { $eq: [{ $type: "$Average Rating" }, "string"] },
-                  { $toDouble: { $trim: { input: "$Average Rating" } } },
-                  null
-                ]
-              }
+              { $in: [{ $type: "$metrics.trips_total" }, ["int","double","long","decimal"]] },
+              "$metrics.trips_total",
+              null
             ]
           }
         }
       },
 
-      // ---- (D) Rule-based eligibility using the casted fields
-      {
-        $match: {
-          $expr: {
-            $or: [
-              // Reactivation
-              { $lt: ["$_totalRides", 5] },
-              // Loyalty (weekday morning)
-              {
-                $and: [
-                  { $gte: ["$_avgRating", 4.5] },
-                  { $in: [day, ["Monday","Tuesday","Wednesday","Thursday","Friday"]] },
-                  { $and: [{ $gte: [hour, 6] }, { $lt: [hour, 10] }] }
-                ]
-              },
-              // Off-peak (late night or very early)
-              { $or: [{ $lt: [hour, 8] }, { $gt: [hour, 21] }] }
-            ]
-          }
-        }
-      },
+      // NO MATCH — keep all customers
 
-      // ---- (E) Facets (use casted fields for buckets)
       {
         $facet: {
+
           byRating: [
             {
               $bucket: {
-                groupBy: "$_avgRating",
+                groupBy: "$rating",
                 boundaries: [0, 3, 3.5, 4, 4.5, 5.1],
                 default: "other",
                 output: { count: { $sum: 1 } }
               }
             }
           ],
+
           byRideCount: [
             {
               $bucket: {
-                groupBy: "$_totalRides",
-                boundaries: [0, 5, 20, 50, 100, 10000],
+                groupBy: "$rides",
+                boundaries: [0, 1, 2, 3, 5, 10000],
                 default: "other",
                 output: { count: { $sum: 1 } }
               }
             }
           ],
-          byDayHour: [
-            { $project: { DayOfWeek: 1, Hour: 1 } },
-            { $group: { _id: { d: "$DayOfWeek", h: "$Hour" }, n: { $sum: 1 } } },
-            { $sort: { "_id.d": 1, "_id.h": 1 } }
-          ],
+
           suggestedBand: [
             {
               $project: {
                 band: {
                   $switch: {
                     branches: [
-                      { case: { $lt: ["$_totalRides", 5] }, then: "20% Reactivation" },
+                      { case: { $lt: ["$rides", 2] }, then: "20% Reactivation" },
                       {
                         case: {
                           $and: [
-                            { $gte: ["$_avgRating", 4.5] },
+                            { $gte: ["$rating", 4.5] },
                             { $in: [day, ["Monday","Tuesday","Wednesday","Thursday","Friday"]] },
-                            { $and: [{ $gte: [hour, 6] }, { $lt: [hour, 10] }] }
+                            { $gte: [hour, 6] },
+                            { $lt: [hour, 10] }
                           ]
                         },
                         then: "10% Loyalty (AM commute)"
                       },
-                      { case: { $or: [{ $lt: [hour, 8] }, { $gt: [hour, 21] }] }, then: "15% Off-peak" }
+                      {
+                        case: {
+                          $or: [
+                            { $lt: [hour, 8] },
+                            { $gt: [hour, 21] }
+                          ]
+                        },
+                        then: "15% Off-peak"
+                      }
                     ],
                     default: "No promo"
                   }
@@ -809,21 +715,19 @@ router.get("/promotions/eligibility-facets", async (req, res) => {
             { $group: { _id: "$band", customers: { $sum: 1 } } },
             { $sort: { customers: -1 } }
           ]
+
         }
       }
     ];
 
-    const [out] = await snaps.aggregate(pipeline).toArray();
-    res.json(out ?? { byRating: [], byRideCount: [], byDayHour: [], suggestedBand: [] });
+    const [result] = await snaps.aggregate(pipeline).toArray();
+    res.json(result);
+
   } catch (err) {
     console.error("❌ eligibility-facets failed:", err);
     res.status(500).json({ error: "Failed to compute eligibility facets" });
   }
 });
-
-
-
-
 
 
 
