@@ -1,70 +1,82 @@
-# Getting Started with Create React App
+# 🚖 UberRide Analytics Platform
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A full-stack analytics dashboard inspired by Uber’s internal operations tools. This system visualizes ride activity, revenue trends, customer behavior, and city-level performance using a hybrid architecture of **MySQL** and **MongoDB**.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## 📊 Overview
 
-### `npm start`
+UberRide Analytics transforms raw ride data into meaningful insights to support operational planning and business decision-making. The platform combines **relational SQL analytics** for financial/operational data with **MongoDB customer models** for flexible user profiling and promotion logic.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Key Objectives
+- **Data Visualization:** Real-time dashboards using Recharts and Leaflet.
+- **Hybrid Database Architecture:** Leveraging SQL for structured transactional data and NoSQL for semi-structured customer snapshots.
+- **Performance:** Optimized query performance through strategic indexing and aggregation pipelines.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+---
 
-### `npm test`
+## 🛠️ Tech Stack
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+| Category | Technologies |
+| :--- | :--- |
+| **Frontend** | React.js, TailwindCSS, Recharts, Leaflet.js |
+| **Backend** | Node.js, Express.js, REST API |
+| **Database (SQL)** | MySQL (Ride & Revenue Analytics) |
+| **Database (NoSQL)** | MongoDB (Snapshots & Promotion Logic) |
 
-### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+---
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 🚀 Getting Started
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Follow these steps to set up the project locally.
 
-### `npm run eject`
+### 1. Clone the Repository
+```bash
+git clone [https://github.com/your-username/uber-analytics.git](https://github.com/your-username/uber-analytics.git)
+cd uber-analytics
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+2. Install Dependencies
+Backend:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```bash
+npm install
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Frontend:
+```bash
+cd client
+npm install
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+3. Configure Environment
+Create a .env file in the root directory and add your database credentials:
 
-## Learn More
+MySQL Configuration:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Code snippet -->
+DB_HOST=localhost
+DB_USER=root
+DB_PASS=your_password
+DB_NAME=uber_analytics
 
-To learn React, check out the [React documentation](https://reactjs.org/).
 
-### Code Splitting
+MongoDB Configuration:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Code snippet -->
+MONGO_URI=your_mongodb_connection_string
 
-### Analyzing the Bundle Size
+4. Start the Application
+Start Backend Server:
+```bash
+# In the root directory
+node server.js
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Start Frontend Client:
+```bash
+# In the client directory
+npm start
+```
+---
